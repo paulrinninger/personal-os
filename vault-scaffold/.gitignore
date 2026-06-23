@@ -1,0 +1,17 @@
+# Your vault is YOURS — if you `git init` it, keep machine-generated and runtime
+# churn out of version control. (The Personal OS repo never touches this vault.)
+
+# Machine-generated — rebuilt by `graphify update`; large & churny
+graphify-out/
+
+# Obsidian workspace cache
+.obsidian/workspace*
+.obsidian/cache
+
+# Personal OS runtime state
+.chat_import_state.json
+.chat_mining_state.txt
+
+# OS noise
+.DS_Store
+.trash/

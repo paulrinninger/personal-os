@@ -1,0 +1,22 @@
+{
+  "_comment": "Copy to config.json and edit, or just pass flags to install.py. All paths support ~ and are resolved to absolute at install time.",
+
+  "vault_dir": "~/vault",
+  "claude_dir": "~/.claude",
+  "scripts_dir": "~/.personal-os/scripts",
+  "log_dir": "",
+  "personal_os_home": "",
+
+  "ollama_endpoint": "http://localhost:11434",
+  "embed_model": "nomic-embed-text",
+
+  "lang": "en",
+
+  "install_examples": true,
+  "schedule_nightly_graph": false,
+
+  "_import_chats_nightly_note": "OFF by default. If true (and you scheduled the nightly job), imports ALL your Claude Code transcripts into the vault so /mine-chats has input. This is a privacy choice — chats stay local and chats/ is gitignored, but enable it knowingly.",
+  "import_chats_nightly": false,
+
+  "auto_install_deps": false
+}

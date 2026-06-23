@@ -1,0 +1,20 @@
+# Personal OS — gitleaks config (PUBLIC, generic).
+# Catches real secrets (default ruleset) plus absolute local home paths that
+# sometimes leak into committed files. It intentionally names NO individual —
+# a public scanner config must not itself become a catalogue of private data.
+[extend]
+useDefault = true
+
+[[rules]]
+id = "local-home-path"
+description = "Absolute local home path leaking into a committed file"
+regex = '''/(Users|home)/[A-Za-z0-9._-]+/'''
+tags = ["pii", "path"]
+
+[allowlist]
+description = "scanner config self-reference"
+paths = [
+  '''\.gitleaks\.toml''',
+  '''\.pre-commit-config\.yaml''',
+  '''\.github/workflows/pii-scan\.yml''',
+]

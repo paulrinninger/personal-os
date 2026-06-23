@@ -1,0 +1,8 @@
+.obsidian/
+.trash/
+.chat_import_state.json
+.chat_mining_state.txt
+# Chat imports: hundreds of session logs = tens of thousands of heading nodes that
+# would drown the knowledge layer. The substance is distilled into real notes via
+# /mine-chats; search chats directly with grep or qmd instead.
+chats/

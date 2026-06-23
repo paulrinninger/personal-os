@@ -1,0 +1,86 @@
+{
+  "env": {
+    "PERSONAL_OS_VAULT": "${PERSONAL_OS_VAULT}",
+    "PERSONAL_OS_CLAUDE_DIR": "${PERSONAL_OS_CLAUDE_DIR}",
+    "PERSONAL_OS_SCRIPTS_DIR": "${PERSONAL_OS_SCRIPTS_DIR}",
+    "PERSONAL_OS_LOG_DIR": "${PERSONAL_OS_LOG_DIR}",
+    "PERSONAL_OS_HOME": "${PERSONAL_OS_HOME}",
+    "PERSONAL_OS_OLLAMA": "${PERSONAL_OS_OLLAMA}",
+    "PERSONAL_OS_LANG": "${PERSONAL_OS_LANG}"
+  },
+  "permissions": {
+    "allow": [
+      "Read(//${PERSONAL_OS_VAULT}/**)",
+      "Edit(//${PERSONAL_OS_VAULT}/**)",
+      "Write(//${PERSONAL_OS_VAULT}/**)"
+    ]
+  },
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${PERSONAL_OS_CLAUDE_DIR}/hooks/recall-lessons.py\" 2>/dev/null || true",
+            "timeout": 12,
+            "statusMessage": "Checking vault lessons…"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${PERSONAL_OS_CLAUDE_DIR}/hooks/risk-recall.py\" 2>/dev/null || true",
+            "timeout": 12,
+            "statusMessage": "Checking risk lessons…"
+          }
+        ]
+      },
+      {
+        "matcher": ".*(create_draft|send_message|send_email|send_mail).*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${PERSONAL_OS_CLAUDE_DIR}/hooks/risk-recall.py\" 2>/dev/null || true",
+            "timeout": 12,
+            "statusMessage": "Checking risk lessons…"
+          }
+        ]
+      },
+      {
+        "matcher": "Read|Glob",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "HIT=$(python3 -c \"import json,sys;d=json.load(sys.stdin);t=d.get('tool_input',d);s=(str(t.get('file_path') or '')+' '+str(t.get('pattern') or '')+' '+str(t.get('path') or '')).lower().replace(chr(92),'/');exts=('.py','.js','.ts','.tsx','.jsx','.go','.rs','.java','.rb','.c','.h','.cpp','.hpp','.cc','.cs','.kt','.swift','.php','.scala','.lua','.sh','.md','.rst','.txt','.mdx');sys.stdout.write('1' if 'graphify-out/' not in s and any(e in s for e in exts) else '')\" 2>/dev/null || true); if [ \"$HIT\" = 1 ] && [ -f graphify-out/graph.json ]; then echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"graphify: knowledge graph at graphify-out/. For codebase questions, run `graphify query \\\"<question>\\\"` (scoped subgraph, usually much smaller than reading files one by one), `graphify explain \\\"<concept>\\\"`, or `graphify path \\\"<A>\\\" \\\"<B>\\\"`, instead of reading source files to answer. Read raw files to modify or debug specific code, or when the graph lacks the detail.\"}}'; fi || true"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo \"[$(date '+%F %T')] precompact fired\" >> \"${PERSONAL_OS_LOG_DIR}/hooks.log\" 2>/dev/null; echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreCompact\",\"additionalContext\":\"PERSONAL OS CHECKPOINT: the context is being compacted. First thing afterwards, write a checkpoint session log like /save: into ~/vault/<project>/logs/ (or ~/vault/logs/ if that folder does not exist), filename <date>-checkpoint-<slug>.md, frontmatter per ~/vault/CLAUDE.md, sections: What was done / Decisions / Pending / Links. Harvest at most 3 transferable lessons into ~/vault/lessons/ (dedup via grep) and any ideas the user voiced into ~/vault/ideas/<kind>/. No git. Then continue the work normally.\"}}' || true"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/bin/sh \"${PERSONAL_OS_SCRIPTS_DIR}/save_nudge.sh\" 2>/dev/null || true",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

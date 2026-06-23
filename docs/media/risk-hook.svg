@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 372" width="720" height="372" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13.5">
+  <rect x="0" y="0" width="720" height="372" rx="10" fill="#0d1117"/>
+  <rect x="0" y="0" width="720" height="34" rx="10" fill="#161b22"/>
+  <rect x="0" y="24" width="720" height="10" fill="#161b22"/>
+  <circle cx="20" cy="17" r="5.5" fill="#ff5f56"/>
+  <circle cx="38" cy="17" r="5.5" fill="#ffbd2e"/>
+  <circle cx="56" cy="17" r="5.5" fill="#27c93f"/>
+  <text x="360" y="21" text-anchor="middle" fill="#8b949e" font-size="12">Claude Code — recall before risky actions</text>
+
+  <!-- claude about to run a tool -->
+  <text x="22" y="62" fill="#a371f7">&#9670;</text>
+  <text x="40" y="62" fill="#adbac7">About to run a command:</text>
+  <text x="40" y="85" fill="#8b949e">&#9205; Bash  <tspan fill="#ff7b72">git push --force origin main</tspan></text>
+
+  <!-- injected risk block -->
+  <rect x="16" y="100" width="688" height="116" rx="6" fill="#2a1416" stroke="#f85149" stroke-width="1"/>
+  <rect x="16" y="100" width="4" height="116" rx="2" fill="#f85149"/>
+  <text x="32" y="122" fill="#ff7b72" font-size="11.5">&#9888; PreToolUse hook · risk-recall.py · fires at the action moment</text>
+  <text x="32" y="146" fill="#f0b72f">VAULT LESSONS — you're about to run a risky action (Bash). Check first:</text>
+  <text x="32" y="170" fill="#ffa657">&#8226; ~/vault/lessons/never-force-push-a-shared-branch.md  <tspan fill="#f0b72f">(85%)</tspan></text>
+  <text x="32" y="194" fill="#8b949e">&#8627; Never force-push a branch others may have pulled.</text>
+
+  <!-- claude pauses -->
+  <text x="22" y="248" fill="#a371f7">&#9670;</text>
+  <text x="40" y="248" fill="#adbac7"><tspan fill="#f0b72f">&#9208; Paused.</tspan> This matches a documented lesson. <tspan fill="#79c0ff">main</tspan> is shared —</text>
+  <text x="40" y="271" fill="#adbac7">force-push will overwrite teammates' commits. Push a feature</text>
+  <text x="40" y="294" fill="#adbac7">branch and open a PR, or use <tspan fill="#79c0ff">--force-with-lease</tspan> instead?</text>
+
+  <text x="22" y="344" fill="#6e7681" font-size="11">Illustrative still of the actual injected context. Animated capture: docs/media/risk-hook.tape</text>
+</svg>

@@ -1,0 +1,23 @@
+# Personal OS — local guardrails. Install once with:  pre-commit install
+# Blocks secrets, absolute home paths, personal emails and runtime/data files
+# BEFORE they are committed. CI repeats the same checks so a
+# `git commit --no-verify` bypass is still caught on push. Names no individual.
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.4
+    hooks:
+      - id: gitleaks
+
+  - repo: local
+    hooks:
+      - id: no-pii
+        name: block absolute home paths and personal emails
+        entry: bash -c 'f=$(git diff --cached --name-only --diff-filter=ACM | grep -vE "(\.pre-commit-config\.yaml|\.gitleaks\.toml|pii-scan\.yml)$"); [ -z "$f" ] && exit 0; echo "$f" | xargs grep -nIE "/(Users|home)/[A-Za-z0-9._-]+/|[A-Za-z0-9._%+-]+@(gmail|googlemail|gmx|web|yahoo|hotmail|outlook|icloud)\.[a-z.]+" && { echo "ERROR: possible PII above (home path or personal email) — remove it."; exit 1; } || exit 0'
+        language: system
+        pass_filenames: false
+
+      - id: no-data-files
+        name: block vault data and runtime logs
+        entry: bash -c 'git diff --cached --name-only | grep -E "lesson-fires\.jsonl|-hooks\.log|\.chat_(import|mining)_state|history\.jsonl|settings\.local\.json" && { echo "ERROR: forbidden data/runtime file staged."; exit 1; } || exit 0'
+        language: system
+        pass_filenames: false

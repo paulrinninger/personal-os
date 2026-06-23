@@ -1,0 +1,52 @@
+# ============================================================================
+# Personal OS — repo .gitignore
+# Goal: it must be STRUCTURALLY IMPOSSIBLE to commit anyone's vault DATA.
+# Only the scaffold structure, templates and curated examples are tracked.
+# ============================================================================
+
+# --- vault-scaffold ships STRUCTURE ONLY. Ignore everything inside it, then
+#     re-include just the structural files via ! allow-patterns. A real note
+#     dropped into vault-scaffold/lessons/ therefore cannot be staged. --------
+vault-scaffold/**
+!vault-scaffold/CLAUDE.md
+!vault-scaffold/HOME.example.md
+!vault-scaffold/.gitignore
+!vault-scaffold/.graphifyignore
+!vault-scaffold/_templates/
+!vault-scaffold/_templates/**
+!vault-scaffold/**/
+!vault-scaffold/**/.gitkeep
+
+# --- Runtime logs & state — never, anywhere ---------------------------------
+**/lesson-fires.jsonl
+**/*-hooks.log
+**/.chat_import_state.json
+**/.chat_mining_state.txt
+**/.chat_mining_state.json
+
+# --- Live Claude Code state (in case someone runs this inside ~/.claude) -----
+**/history.jsonl
+**/sessions/
+**/projects/
+**/settings.local.json
+**/stats-cache.json
+**/policy-limits.json
+**/shell-snapshots/
+
+# --- Machine-generated indexes / graphs -------------------------------------
+graphify-out/
+**/graphify-out/
+.cache/qmd/
+**/.graphify_labels.json
+
+# --- Python / tooling --------------------------------------------------------
+__pycache__/
+*.pyc
+.venv/
+.mypy_cache/
+.pytest_cache/
+
+# --- OS / editor -------------------------------------------------------------
+.DS_Store
+.obsidian/workspace*
+.obsidian/cache

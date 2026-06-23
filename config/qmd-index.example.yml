@@ -1,0 +1,29 @@
+# qmd index config for the Personal OS vault.
+# The installer copies this to ~/.config/qmd/index.yml and replaces ${VAULT}
+# with your actual vault path. All models are local GGUF — no API key, $0.
+#
+# `chats/` is intentionally NOT a collection (its substance is distilled into
+# real notes via /mine-chats; indexing raw transcripts drowns the signal).
+collections:
+  lessons:
+    path: ${VAULT}/lessons
+    pattern: "**/*.md"
+  knowledge:
+    path: ${VAULT}/knowledge
+    pattern: "**/*.md"
+  projects:
+    path: ${VAULT}/projects
+    pattern: "**/*.md"
+  profile:
+    path: ${VAULT}/profile
+    pattern: "**/*.md"
+  ideas:
+    path: ${VAULT}/ideas
+    pattern: "**/*.md"
+  logs:
+    path: ${VAULT}/logs
+    pattern: "**/*.md"
+models:
+  embed: hf:Qwen/Qwen3-Embedding-0.6B-GGUF/Qwen3-Embedding-0.6B-Q8_0.gguf
+  generate: hf:tobil/qmd-query-expansion-1.7B-gguf/qmd-query-expansion-1.7B-q4_k_m.gguf
+  rerank: hf:ggml-org/Qwen3-Reranker-0.6B-Q8_0-GGUF/qwen3-reranker-0.6b-q8_0.gguf

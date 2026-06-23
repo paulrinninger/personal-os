@@ -1,0 +1,25 @@
+Personal OS
+Copyright (c) 2026 Personal OS contributors
+Licensed under the MIT License. See LICENSE.
+
+------------------------------------------------------------------------
+
+This project depends on, but does not bundle or redistribute the engines
+of, the following tools. You install them yourself and each remains under
+its own license. (The only third-party file included here is a thin qmd
+"skill" bootstrap — claude/skills/qmd/SKILL.md, MIT — which merely calls
+`qmd skill show`; the qmd engine itself is not vendored.)
+
+  qmd
+    Author:  Tobi Lutke
+    License: MIT
+    Source:  https://github.com/tobi/qmd
+
+  graphify
+    Author:  Safi Shamsi
+    License: MIT
+    Source:  https://github.com/safishamsi/graphify
+
+  ollama (optional)
+    License: MIT-style
+    Source:  https://ollama.com

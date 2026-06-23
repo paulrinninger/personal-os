@@ -1,0 +1,47 @@
+name: pii-scan
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history so a bad PAST commit is caught too
+
+      - name: gitleaks (secrets + generic PII rules)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITLEAKS_CONFIG: .gitleaks.toml
+
+      - name: generic PII denylist (no individual named)
+        run: |
+          set -euo pipefail
+          # absolute local home paths, and common consumer-email providers
+          PATTERNS='/(Users|home)/[A-Za-z0-9._-]+/|[A-Za-z0-9._%+-]+@(gmail|googlemail|gmx|web|yahoo|hotmail|outlook|icloud)\.[a-z.]+'
+          if git grep -nIE "$PATTERNS" -- \
+              ':!.github/workflows/pii-scan.yml' \
+              ':!.gitleaks.toml' \
+              ':!.pre-commit-config.yaml'; then
+            echo "::error::Possible PII above (absolute home path or personal email) — scrub before merge."
+            exit 1
+          fi
+          echo "denylist clean"
+
+      - name: forbidden files
+        run: |
+          set -euo pipefail
+          rc=0
+          while IFS= read -r f; do
+            case "$f" in
+              *lesson-fires.jsonl|*-hooks.log|*history.jsonl|*settings.local.json|*.chat_import_state.json|*.chat_mining_state.*)
+                echo "::error::forbidden file tracked: $f"; rc=1;;
+            esac
+          done < <(git ls-files)
+          [ "$rc" = 0 ] && echo "no forbidden files" || exit 1
