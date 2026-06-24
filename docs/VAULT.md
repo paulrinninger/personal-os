@@ -36,6 +36,7 @@ types, and templates.
 ├── profile/            # deine Standards/Vorlieben (Design, Stil, Ansprüche)
 ├── logs/               # datierte Session-Logs (/save)
 ├── permanent/          # langlebige, kuratierte Evergreen-Notizen
+├── _inbox/             # Harvest-Drafts (status: draft) — außerhalb der qmd-Collection, nicht im Recall
 └── chats/
     ├── code/           # importierte Claude-Code-Transkripte
     └── web/            # importierte Web-Chat-Transkripte
@@ -63,6 +64,7 @@ types, and templates.
 ├── profile/            # your standards/preferences (design, style, bar)
 ├── logs/               # dated session logs (/save)
 ├── permanent/          # long-lived, curated evergreen notes
+├── _inbox/             # harvest drafts (status: draft) — outside the qmd collection, not in recall
 └── chats/
     ├── code/           # imported Claude Code transcripts
     └── web/            # imported web-chat transcripts

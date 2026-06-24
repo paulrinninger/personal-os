@@ -29,7 +29,7 @@ The thing holding AI coding back isn't intelligence — it's **amnesia**. Person
 
 - 🧠 **Recall is automatic, not manual.** Storage is easy; *remembering to retrieve at the right moment* is the hard part. Two hooks make retrieval involuntary — on every prompt, and again right before anything risky.
 - 📈 **It compounds.** Every lesson you capture keeps paying off, forever, because it's recalled for free on every future prompt across every project. Knowledge accrues instead of resetting.
-- ✂️ **It stays sharp.** Unlike a notes pile that only grows, it *measures* which lessons actually fire and *prunes* the dead weight — so recall quality goes up over time, not down.
+- ✂️ **It stays sharp.** Unlike a notes pile that only grows, it *measures* which lessons actually fire and *prunes* the dead weight — so recall quality goes up over time, not down. It even self-harvests lessons from sessions that ended without `/save`, and self-checks its own health (`/os doctor`).
 - 🔒 **It's yours, and it's free.** Plain markdown on your disk, no database, no vendor, no lock-in. All inference is local GGUF models — **no API key, ever, $0** — so your code and notes never leave the machine.
 - 🌍 **It's language-agnostic.** Recall is semantic and multilingual: a lesson written in German surfaces for an English prompt, and vice versa.
 
@@ -52,7 +52,7 @@ Three thin layers, all on your machine — capture flows down, recall flows back
 ![Architecture: three local layers](docs/media/architecture.svg)
 
 1. **Your vault** — an Obsidian-style folder of plain markdown (`lessons/`, `ideas/`, `knowledge/`, `projects/`, `logs/`, `profile/`). You own every file.
-2. **Claude Code integration** — two hooks (`recall-lessons.py`, `risk-recall.py`), seven slash commands, and a small measure/prune engine, merged into `~/.claude` without touching your existing setup.
+2. **Claude Code integration** — two hooks (`recall-lessons.py`, `risk-recall.py`), eight slash commands, and a small measure/prune engine, merged into `~/.claude` without touching your existing setup.
 3. **Local engines** — [`qmd`](https://github.com/tobi/qmd) for semantic search, [`graphify`](https://github.com/safishamsi/graphify) for graph queries, optional `ollama` for dedup. All $0, all offline.
 
 The whole thing installs with one command and is fully reversible.
@@ -146,6 +146,7 @@ The installer creates `~/vault`, merges the commands/hooks/skills into `~/.claud
 | `/os` | Dashboard across all projects — lessons, ideas, hubs, open points |
 | `/mine-chats` | Distill learnings from imported chat transcripts |
 | `/lessons-gc` | Prune cold, stale, and duplicate lessons to keep the store sharp |
+| `/harvest` | Distill lessons & ideas from sessions that ended without `/save`, into a review inbox |
 
 ---
 

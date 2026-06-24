@@ -79,8 +79,9 @@ def main():
     # commands / hooks / engine
     for f in ("commands/save.md", "commands/lesson.md", "commands/idea.md", "commands/os.md",
               "commands/resume.md", "commands/mine-chats.md", "commands/lessons-gc.md",
+              "commands/harvest.md",
               "hooks/recall-lessons.py", "hooks/risk-recall.py",
-              "personal-os/os_lessons.py", "personal-os/README.md"):
+              "personal-os/os_lessons.py", "personal-os/os_doctor.py", "personal-os/README.md"):
         p = os.path.join(cd, f)
         if os.path.lexists(p):
             os.remove(p)

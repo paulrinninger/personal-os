@@ -1,9 +1,18 @@
 ---
 description: "Personal OS dashboard: status across all projects — lessons, ideas, hubs, open items. 'update' refreshes the auto-block in HOME.md."
-argument-hint: "[optional: 'update' | a topic/domain to focus on, e.g. 'marketing']"
+argument-hint: "[optional: 'update' | 'doctor' | a topic/domain to focus on, e.g. 'marketing']"
 ---
 
 You give the user an overview of their Personal OS (`~/vault/`, rules: `~/vault/CLAUDE.md`).
+
+**`doctor` mode** (`$ARGUMENTS` == `doctor`): run only the deterministic self-health check and stop — it
+verifies the OS's own machinery is alive (recall hooks firing, qmd index fresh, lessons not rotting,
+harvest queue drained, inbox reviewed):
+```bash
+python3 ~/.claude/personal-os/os_doctor.py
+```
+Show its output as-is; on WARN/FAIL add one line each on what to do (`/lessons-gc`, `/harvest`), else
+"system healthy." This is the ongoing runtime check — distinct from the one-time `install/doctor.py`.
 
 Steps:
 

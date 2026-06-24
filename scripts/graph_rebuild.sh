@@ -47,4 +47,12 @@ if [ -f "$SCRIPTS_DIR/vault_inject_wikilinks.py" ]; then
 fi
 
 echo "[$(ts)] done" >> "$LOG"
+
+# Optional self-health: run the runtime doctor ($0, read-only) and log it. Meaningful mainly for
+# scheduled (nightly) runs; harmless otherwise. Never breaks the rebuild (|| true).
+PO="${PERSONAL_OS_HOME:-$HOME/.claude/personal-os}"; PO=$(eval echo "$PO")
+if [ -f "$PO/os_doctor.py" ]; then
+  echo "[$(ts)] self-health (os_doctor)" >> "$LOG"
+  python3 "$PO/os_doctor.py" >> "$LOG" 2>&1 || true
+fi
 exit 0

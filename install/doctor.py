@@ -75,7 +75,8 @@ def main():
             if hint:
                 print(f"       → {hint}")
 
-    print("Personal OS — doctor\n")
+    print("Personal OS — doctor (one-time post-install wiring check)")
+    print("(for ongoing runtime health — recall freshness, queue/inbox backlog — run  /os doctor)\n")
 
     print("Dependencies:")
     check("qmd (core)", bool(shutil.which("qmd")),
@@ -99,9 +100,9 @@ def main():
 
     print("\nClaude Code integration:")
     for f in ("hooks/recall-lessons.py", "hooks/risk-recall.py",
-              "personal-os/os_lessons.py"):
+              "personal-os/os_lessons.py", "personal-os/os_doctor.py"):
         check(f"~/.claude/{f}", os.path.isfile(os.path.join(cd, f)))
-    for cmd in ("save", "lesson", "idea", "os", "resume", "mine-chats", "lessons-gc"):
+    for cmd in ("save", "lesson", "idea", "os", "resume", "mine-chats", "lessons-gc", "harvest"):
         p = os.path.join(cd, "commands", cmd + ".md")
         check(f"/{cmd}", os.path.isfile(p))
 

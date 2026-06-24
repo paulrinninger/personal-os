@@ -29,7 +29,7 @@ Was KI-Coding ausbremst, ist nicht Intelligenz — es ist **Amnesie**. Personal 
 
 - 🧠 **Recall ist automatisch, nicht manuell.** Speichern ist leicht; *im richtigen Moment ans Abrufen zu denken* ist der schwere Teil. Zwei Hooks machen das Abrufen unwillkürlich — bei jedem Prompt, und noch einmal direkt vor allem Riskanten.
 - 📈 **Es verzinst sich.** Jede Lesson, die du festhältst, zahlt sich für immer weiter aus, weil sie bei jedem künftigen Prompt in jedem Projekt kostenlos abgerufen wird. Wissen wächst an, statt sich zurückzusetzen.
-- ✂️ **Es bleibt scharf.** Anders als ein Notizenhaufen, der nur wächst, *misst* es, welche Lessons tatsächlich feuern, und *prunet* den toten Ballast — so steigt die Recall-Qualität mit der Zeit, statt zu sinken.
+- ✂️ **Es bleibt scharf.** Anders als ein Notizenhaufen, der nur wächst, *misst* es, welche Lessons tatsächlich feuern, und *prunet* den toten Ballast — so steigt die Recall-Qualität mit der Zeit, statt zu sinken. Es erntet sogar Lessons aus Sessions, die du ohne `/save` beendet hast, und prüft via `/os doctor` die eigene Gesundheit.
 - 🔒 **Es gehört dir, und es ist kostenlos.** Reines Markdown auf deiner Platte, keine Datenbank, kein Anbieter, kein Lock-in. Sämtliche Inferenz läuft über lokale GGUF-Modelle — **niemals ein API-Key, $0** — also verlassen dein Code und deine Notizen nie die Maschine.
 - 🌍 **Es ist sprachunabhängig.** Recall ist semantisch und mehrsprachig: Eine auf Deutsch geschriebene Lesson taucht bei einem englischen Prompt auf, und umgekehrt.
 
@@ -52,7 +52,7 @@ Drei dünne Schichten, alle auf deiner Maschine — das Festhalten fließt nach 
 ![Architektur: drei lokale Schichten](docs/media/architecture.svg)
 
 1. **Dein Vault** — ein Obsidian-artiger Ordner aus reinem Markdown (`lessons/`, `ideas/`, `knowledge/`, `projects/`, `logs/`, `profile/`). Dir gehört jede Datei.
-2. **Claude-Code-Integration** — zwei Hooks (`recall-lessons.py`, `risk-recall.py`), sieben Slash-Befehle und eine kleine Mess-/Prune-Engine, eingebunden in `~/.claude`, ohne dein bestehendes Setup anzurühren.
+2. **Claude-Code-Integration** — zwei Hooks (`recall-lessons.py`, `risk-recall.py`), acht Slash-Befehle und eine kleine Mess-/Prune-Engine, eingebunden in `~/.claude`, ohne dein bestehendes Setup anzurühren.
 3. **Lokale Engines** — [`qmd`](https://github.com/tobi/qmd) für semantische Suche, [`graphify`](https://github.com/safishamsi/graphify) für Graph-Abfragen, optional `ollama` für Dedup. Alles $0, alles offline.
 
 Das Ganze installiert sich mit einem einzigen Befehl und ist vollständig reversibel.
@@ -146,6 +146,7 @@ Der Installer legt `~/vault` an, führt die Befehle/Hooks/Skills in `~/.claude` 
 | `/os` | Dashboard über alle Projekte — Lessons, Ideen, Hubs, offene Punkte |
 | `/mine-chats` | Destilliert Learnings aus importierten Chat-Transkripten |
 | `/lessons-gc` | Prunet kalte, veraltete und doppelte Lessons, um den Speicher scharf zu halten |
+| `/harvest` | Destilliert Lessons & Ideen aus Sessions, die ohne `/save` endeten, in eine Review-Inbox |
 
 ---
 

@@ -2,11 +2,11 @@
 
 > **DE zuerst, dann EN.** Each section has a German half and an English half.
 
-Vollständige Referenz: die 7 Slash-Commands, die 2 Hooks und die Engine `os_lessons.py` —
-was jedes tut, wann es läuft, was es liest/schreibt.
+Vollständige Referenz: die 8 Slash-Commands, die 2 Hooks und die Engines `os_lessons.py` /
+`os_doctor.py` — was jedes tut, wann es läuft, was es liest/schreibt.
 
-Complete reference: the 7 slash commands, the 2 hooks, and the `os_lessons.py` engine —
-what each does, when it runs, what it reads/writes.
+Complete reference: the 8 slash commands, the 2 hooks, and the engines (`os_lessons.py`,
+`os_doctor.py`) — what each does, when it runs, what it reads/writes.
 
 ---
 
@@ -22,9 +22,10 @@ Installiert nach / installed to: `~/.claude/commands/`
 | `/resume` | Baut den Kontext aus den neuesten Logs neu auf. | Beim Wiedereinstieg ins Projekt. | Liest die neuesten `logs/`. |
 | `/lesson` | Hält **eine** Lesson fest (Fehler + Fix + Warum); dedupliziert vorher. | Sobald du etwas gelernt hast. | Liest/schreibt `lessons/` (Dedup-Check zuerst). |
 | `/idea` | Hält eine Idee fest: `hook` \| `video` \| `posting` \| `product`. | Wenn dir etwas einfällt. | Schreibt nach `ideas/<kind>/`. |
-| `/os` | Dashboard: Stand über alle Projekte (Lessons, Ideen, Hubs, offene Punkte). `/os update` refresht den Auto-Block in `HOME.md`. | Für den Überblick. | Liest den Vault; `update` schreibt `HOME.md`-Block. |
+| `/os` | Dashboard: Stand über alle Projekte (Lessons, Ideen, Hubs, offene Punkte). `/os update` refresht den Auto-Block in `HOME.md`; `/os doctor` fährt den Self-Health-Check. | Für den Überblick. | Liest den Vault; `update` schreibt `HOME.md`-Block. |
 | `/mine-chats` | Destilliert inkrementell Learnings aus importierten Claude-Chat-Transkripten. | Nach neuen Chat-Imports. | Liest `chats/`, schreibt Lessons/Wissen; State-File für Inkrement. |
 | `/lessons-gc` | Räumt kalte/veraltete/doppelte Lessons aus. **Löscht nie ohne Rückfrage.** | Zur Pflege, gelegentlich. | Liest `lessons/`; optional ollama-Embeddings für Near-Dubletten. |
+| `/harvest` | Verarbeitet die Auto-Harvest-Queue: destilliert Lessons/Ideen aus Sessions, die **ohne `/save`** endeten, in die Review-Inbox `_inbox/`. | Wenn die Queue gefüllt ist (`/os doctor` zeigt's). | Liest Queue + Transkripte; schreibt Drafts nach `_inbox/`. |
 
 ### EN
 
@@ -34,9 +35,10 @@ Installiert nach / installed to: `~/.claude/commands/`
 | `/resume` | Rebuilds context from the newest logs. | When re-entering a project. | Reads the newest `logs/`. |
 | `/lesson` | Captures **one** lesson (error + fix + why); dedupes first. | The moment you learn something. | Reads/writes `lessons/` (dedup check first). |
 | `/idea` | Captures one idea: `hook` \| `video` \| `posting` \| `product`. | When something comes to mind. | Writes to `ideas/<kind>/`. |
-| `/os` | Dashboard: state across all projects (lessons, ideas, hubs, open items). `/os update` refreshes the auto-block in `HOME.md`. | For an overview. | Reads the vault; `update` writes the `HOME.md` block. |
+| `/os` | Dashboard: state across all projects (lessons, ideas, hubs, open items). `/os update` refreshes the auto-block in `HOME.md`; `/os doctor` runs the self-health check. | For an overview. | Reads the vault; `update` writes the `HOME.md` block. |
 | `/mine-chats` | Incrementally distills learnings from imported Claude chat transcripts. | After new chat imports. | Reads `chats/`, writes lessons/knowledge; state-file for incrementing. |
 | `/lessons-gc` | Prunes cold/stale/duplicate lessons. **Never deletes without asking.** | For maintenance, occasionally. | Reads `lessons/`; optional ollama embeddings for near-duplicates. |
+| `/harvest` | Processes the auto-harvest queue: distills lessons/ideas from sessions that ended **without `/save`** into the review inbox `_inbox/`. | When the queue has items (`/os doctor` shows it). | Reads the queue + transcripts; writes drafts to `_inbox/`. |
 
 ---
 
@@ -98,18 +100,40 @@ only proposes; **nothing is deleted without asking** (via `/lessons-gc`).
 
 ---
 
+## 3b. Runtime-Doctor: `os_doctor.py` / Runtime doctor: `os_doctor.py`
+
+### DE
+
+Deterministischer Self-Health-Check ($0, read-only): feuern die Recall-Hooks, ist der qmd-Index
+frisch, verrotten Lessons, ist die Harvest-Queue/Inbox abgearbeitet. Läuft via **`/os doctor`** und
+nächtlich aus `graph_rebuild.sh`. Exit 1 nur bei echtem FAIL; Optionales (Scheduler, Vault-git)
+degradiert zu INFO. Nutzt `os_lessons.analyze` wieder. **Verschieden von `install/doctor.py`**
+(dem einmaligen Post-Install-Smoke-Test).
+
+### EN
+
+Deterministic self-health check ($0, read-only): are the recall hooks firing, is the qmd index fresh,
+are lessons rotting, is the harvest queue/inbox drained. Runs via **`/os doctor`** and nightly from
+`graph_rebuild.sh`. Exit 1 only on a real FAIL; optional features (scheduler, vault git) degrade to
+INFO. Reuses `os_lessons.analyze`. **Distinct from `install/doctor.py`** (the one-time post-install
+smoke test).
+
+---
+
 ## 4. Auf einen Blick / At a glance
 
 ### DE
 
-- **Capture**: `/save`, `/lesson`, `/idea`, `/mine-chats`
+- **Capture**: `/save`, `/lesson`, `/idea`, `/mine-chats`, `/harvest` (un-gesavte Sessions)
 - **Recall**: `recall-lessons.py` (jeder Prompt) + `risk-recall.py` (vor Risiko-Aktionen),
   außerdem `/resume`
-- **Maintain**: `/os` (+ `os_lessons.py health`), `/lessons-gc` (+ `os_lessons.py gc`)
+- **Maintain / Self-Heal**: `/os` (+ `os_lessons.py health`), `/os doctor` (+ `os_doctor.py`),
+  `/lessons-gc` (+ `os_lessons.py gc`)
 
 ### EN
 
-- **Capture**: `/save`, `/lesson`, `/idea`, `/mine-chats`
+- **Capture**: `/save`, `/lesson`, `/idea`, `/mine-chats`, `/harvest` (un-saved sessions)
 - **Recall**: `recall-lessons.py` (every prompt) + `risk-recall.py` (before risk actions),
   plus `/resume`
-- **Maintain**: `/os` (+ `os_lessons.py health`), `/lessons-gc` (+ `os_lessons.py gc`)
+- **Maintain / self-heal**: `/os` (+ `os_lessons.py health`), `/os doctor` (+ `os_doctor.py`),
+  `/lessons-gc` (+ `os_lessons.py gc`)

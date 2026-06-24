@@ -23,6 +23,7 @@ Claude's `~/.claude` auto-memory.
 ├── ideas/{hooks,video,posting,product}/      # idea pool
 ├── projects/               # 1 hub note per project: <kebab-name>.md (status, stack, paths)
 ├── permanent/              # atomic Zettelkasten notes (1 concept each, no clear domain)
+├── _inbox/                 # harvest drafts (status: draft) — outside the qmd collection, not in recall
 ├── logs/                   # cross-project session logs
 ├── chats/{code,web}/       # imported Claude conversations (auto, rule-based)
 ├── graphify-out/           # vault knowledge graph (machine-generated, exclude in Obsidian)

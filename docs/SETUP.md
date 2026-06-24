@@ -254,6 +254,10 @@ existiert der Vault, ist `index.yml` geschrieben, wurde ein `qmd embed` ausgefü
 die Hooks in `settings.json` registriert, und (optional) sind graphify/ollama erreichbar.
 Ausgabe ist eine Checkliste mit konkreten Fix-Hinweisen.
 
+> **Zwei Doctors:** `install/doctor.py` ist der einmalige **Post-Install**-Check (läuft eine echte
+> Recall-Abfrage). Für die **laufende** Gesundheit eines aktiven OS — feuern die Hooks noch, ist die
+> Harvest-Queue/Inbox abgearbeitet, verrotten Lessons — nutze `/os doctor` (läuft auch nächtlich).
+
 **Häufige Fälle:**
 - *Recall feuert nicht* → erst `qmd vsearch "test"` von Hand laufen lassen; liefert es
   nichts, fehlt vermutlich der erste `qmd embed`.
@@ -272,6 +276,10 @@ python3 install/doctor.py
 exist, is `index.yml` written, has a `qmd embed` run, are the hooks registered in
 `settings.json`, and (optionally) are graphify/ollama reachable. Output is a checklist
 with concrete fix hints.
+
+> **Two doctors:** `install/doctor.py` is the one-time **post-install** check (it runs a real recall
+> query). For the **ongoing** health of a live OS — are the hooks still firing, is the harvest
+> queue/inbox drained, are lessons rotting — use `/os doctor` (also runs nightly).
 
 **Common cases:**
 - *Recall doesn't fire* → run `qmd vsearch "test"` by hand first; if it returns nothing,

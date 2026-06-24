@@ -40,7 +40,7 @@ jobs:
           rc=0
           while IFS= read -r f; do
             case "$f" in
-              *lesson-fires.jsonl|*-hooks.log|*history.jsonl|*settings.local.json|*.chat_import_state.json|*.chat_mining_state.*)
+              *lesson-fires.jsonl|*-hooks.log|*history.jsonl|*settings.local.json|*.chat_import_state.json|*.chat_mining_state.*|*harvest-queue.jsonl)
                 echo "::error::forbidden file tracked: $f"; rc=1;;
             esac
           done < <(git ls-files)

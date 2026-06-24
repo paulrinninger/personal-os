@@ -23,6 +23,7 @@ vault-scaffold/**
 **/.chat_import_state.json
 **/.chat_mining_state.txt
 **/.chat_mining_state.json
+**/harvest-queue.jsonl
 
 # --- Live Claude Code state (in case someone runs this inside ~/.claude) -----
 **/history.jsonl

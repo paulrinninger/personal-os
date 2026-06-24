@@ -31,14 +31,24 @@ Capture = `/lesson`, `/save`, `/idea`, `/mine-chats`. The rest lives here:
 - Time-sensitive lessons get `review_by: YYYY-MM-DD` (see `/lesson`). `gc` reports overdue ones
   for re-validation instead of treating them as true forever.
 
+## Self-health & auto-harvest
+- **`os_doctor.py`** — deterministic, $0, read-only self-health check (recall hooks firing, qmd index
+  fresh, lessons not rotting, harvest queue/inbox drained). Run via **`/os doctor`** and nightly from
+  `graph_rebuild.sh`; exit 1 only on a real FAIL (optional features degrade to INFO). Reuses
+  `os_lessons.analyze`. Distinct from the one-time `install/doctor.py`.
+- **Auto-harvest** — the Stop hook (`save_nudge.sh`) enqueues actioned sessions that ended without
+  `/save` to `$PERSONAL_OS_HOME/harvest-queue.jsonl`; **`/harvest`** distills them into `~/vault/_inbox/`
+  (outside the qmd collection → drafts don't pollute recall) for Y/N promotion. $0, interactive.
+
 ## Guiding principle
 A lesson earns its place only if it fires. Never fired → archive. Fired often → sharpen.
 Contradictory → merge. That keeps recall sharp instead of bloated.
 
 ## Tuning
 - Threshold/mode: `PERSONAL_OS_SCORE`, `SEARCH_MODE` in the hook scripts.
-- Risk triggers: `RISKY_BASH` / `MAIL_KEYS` in `risk-recall.py`.
+- Risk triggers: `RISKY_BASH` / `MAIL_KEYS` in `risk-recall.py` (also fires on `git commit` / `git add -A`).
 - Duplicate threshold: `--dup-min` (default 0.82) / `--merge-min` (default 0.88).
 - Injection log: `$PERSONAL_OS_LOG_DIR/hooks.log` (`[recall-lessons]` / `[risk-recall]`).
+- Harvest queue: `$PERSONAL_OS_HOME/harvest-queue.jsonl` (processed by `/harvest`).
 - Language of injected notes: `PERSONAL_OS_LANG` (`en` | `de`).
 - Hooks on/off: `/hooks`.

@@ -201,3 +201,44 @@ You write notes in whatever language is most natural at the time — German, Eng
 Recall works **across language boundaries**: qmd's semantic search uses multilingual
 embeddings (Qwen3-Embedding), so an English prompt finds a German lesson and vice versa.
 You never have to guess which language you wrote something down in.
+
+---
+
+## 7. Der Selbstheilungs-Layer: Auto-Harvest & Doctor / The self-heal layer: auto-harvest & doctor
+
+### DE
+
+Zwei Mechanismen erweitern die **Maintain**-Phase aus Abschnitt 1 zu „Self-Heal" — das System
+schließt seine eigenen Lücken und überwacht seine eigene Gesundheit:
+
+- **Auto-Harvest.** Eine Session, die echte Arbeit tut (Edit/Write/Bash) aber **ohne `/save`** endet,
+  würde ihre Lessons verlieren. Der Stop-Hook erkennt das und legt eine Breadcrumb in eine
+  Harvest-Queue. **`/harvest`** destilliert solche Sessions später — interaktiv, mit dir im Loop — in
+  eine **Review-Inbox** (`_inbox/`, bewusst außerhalb der qmd-Collection, damit ungeprüfte Drafts den
+  Recall nicht verfälschen). Du promotest per Y/N. So schließt sich die Capture-Lücke, ohne eine
+  headless LLM-Pipeline und ohne Kosten ($0).
+- **Self-Health-Doctor.** **`/os doctor`** (→ `os_doctor.py`) prüft deterministisch, ob die Maschinerie
+  selbst lebt: feuern die Recall-Hooks, ist der qmd-Index frisch, ist die Harvest-Queue/Inbox
+  abgearbeitet, verrotten Lessons. Er läuft auch nächtlich — das System beobachtet seine eigene
+  Gesundheit, statt still zu verrotten.
+
+Beides ist „Maintain", eine Stufe weitergedacht: nicht nur den Speicher pflegen, sondern den **Loop
+selbst** am Leben halten.
+
+### EN
+
+Two mechanisms extend the **Maintain** phase from section 1 into "self-heal" — the system closes its
+own gaps and watches its own health:
+
+- **Auto-harvest.** A session that does real work (Edit/Write/Bash) but ends **without `/save`** would
+  lose its lessons. The Stop hook notices and drops a breadcrumb into a harvest queue. **`/harvest`**
+  later distills such sessions — interactively, with you in the loop — into a **review inbox**
+  (`_inbox/`, deliberately outside the qmd collection so un-reviewed drafts can't skew recall). You
+  promote them with a Y/N. The capture gap closes without a headless LLM pipeline and at no cost ($0).
+- **Self-health doctor.** **`/os doctor`** (→ `os_doctor.py`) deterministically checks that the
+  machinery itself is alive: are the recall hooks firing, is the qmd index fresh, is the harvest
+  queue/inbox drained, are lessons rotting. It also runs nightly — the system watches its own health
+  instead of quietly rotting.
+
+Both are "Maintain" taken one step further: not just keeping the store tidy, but keeping the **loop
+itself** alive.

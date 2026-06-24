@@ -18,6 +18,6 @@ repos:
 
       - id: no-data-files
         name: block vault data and runtime logs
-        entry: bash -c 'git diff --cached --name-only | grep -E "lesson-fires\.jsonl|-hooks\.log|\.chat_(import|mining)_state|history\.jsonl|settings\.local\.json" && { echo "ERROR: forbidden data/runtime file staged."; exit 1; } || exit 0'
+        entry: bash -c 'git diff --cached --name-only | grep -E "lesson-fires\.jsonl|harvest-queue\.jsonl|-hooks\.log|\.chat_(import|mining)_state|history\.jsonl|settings\.local\.json" && { echo "ERROR: forbidden data/runtime file staged."; exit 1; } || exit 0'
         language: system
         pass_filenames: false

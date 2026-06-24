@@ -196,7 +196,7 @@ def setup_claude_assets(cfg, link, dry, backup_dir):
         _place(os.path.join(REPO, "claude", "hooks", fn), d, link, os.path.join(backup_dir, "hooks"))
         os.chmod(d, 0o755)
     # engine
-    for fn in ("os_lessons.py", "README.md"):
+    for fn in ("os_lessons.py", "os_doctor.py", "README.md"):
         _place(os.path.join(REPO, "claude", "personal-os", fn),
                os.path.join(cfg["personal_os_home"], fn), link,
                os.path.join(backup_dir, "personal-os"))

@@ -5,7 +5,8 @@ In EVERY project:
 - Before risky/novel work: `qmd query "<keyword>"` (semantic — finds paraphrased/cross-lingual lessons
   that grep/graphify miss) or `grep -ril "<keyword>" ~/vault/lessons/` — read the hits.
 - Your standards (design, style, expectations): `~/vault/profile/` — act on them.
-- Capture: `/save` (session log + lessons/ideas harvest), `/lesson`, `/idea`; overview `/os`.
+- Capture: `/save` (session log + lessons/ideas harvest), `/lesson`, `/idea`, and `/harvest`
+  (process sessions that ended without `/save`); overview `/os` (`/os doctor` = self-health check).
 - If you (the user) report a bug that came from EARLIER Claude work (thought correct yesterday, broken
   today): right after the fix, IMMEDIATELY write a lesson (like /lesson, with the why + a dedup check) —
   don't wait for /save. That's the system's most important learning moment.

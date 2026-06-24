@@ -4,6 +4,8 @@
 #
 # `chats/` is intentionally NOT a collection (its substance is distilled into
 # real notes via /mine-chats; indexing raw transcripts drowns the signal).
+# `_inbox/` is also intentionally NOT a collection — it holds un-reviewed harvest
+# drafts (/harvest); they must not enter recall until promoted to lessons/ or ideas/.
 collections:
   lessons:
     path: ${VAULT}/lessons

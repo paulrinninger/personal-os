@@ -45,7 +45,8 @@ FIRE_LOG = os.path.join(_personal_os_home(), "lesson-fires.jsonl")
 LOG = _log_path()
 
 RISKY_BASH = re.compile(
-    r"git\s+push|--force|--force-with-lease|reset\s+--hard|\brm\s+-[rf]|"
+    r"git\s+push|git\s+commit|git\s+add\s+(-A|--all|-u|\.)|"
+    r"--force|--force-with-lease|reset\s+--hard|\brm\s+-[rf]|"
     r"\bvercel\b|\bdeploy\b|npm\s+publish|yarn\s+publish|gh\s+release|"
     r"drop\s+table|delete\s+from|truncate\b|supabase\s+db|"
     r"prisma\s+migrate\s+(reset|deploy)|git\s+clean\s+-|chmod\s+-R|"

@@ -5,6 +5,30 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-06-24
+
+### Added
+
+- **Auto-harvest loop.** The Stop hook (`save_nudge.sh`) now enqueues sessions that did real work (an
+  Edit/Write/Bash action) but ended **without `/save`** to a harvest queue; the new `/harvest` command
+  distills their lessons & ideas into a review inbox (`~/vault/_inbox/`, kept outside the qmd collection
+  so un-reviewed drafts don't pollute recall) for Y/N promotion. Interactive, `$0`, no headless LLM — it
+  closes the capture gap for sessions you forgot to save.
+- **Runtime self-health doctor** (`claude/personal-os/os_doctor.py`) + `/os doctor` — deterministic,
+  `$0`, read-only checks that the OS's own machinery is alive (recall hooks firing, qmd index fresh,
+  lessons not rotting, harvest queue/inbox drained). Optional features (nightly scheduler, vault git
+  backup) degrade to INFO so a fresh install reports clean; exit 1 only on a real failure. Also run by
+  the nightly graph rebuild. Distinct from the one-time post-install `install/doctor.py`.
+- `risk-recall.py` now also surfaces lessons before `git commit` and `git add -A|--all|-u|.`, not just
+  `git push` — so staging/commit mistakes are caught at the moment they happen.
+
+### Fixed
+
+- **Save-detection false positive** in `scripts/save_nudge.sh`: the `/save` nudge keyed on any mention
+  of a `logs/` path (matching CLAUDE.md, recall context, or the `/save` docs), so it could wrongly
+  conclude a session was already saved and stay silent. It now matches a real `"file_path"` **write** to
+  a vault `logs/*.md`.
+
 ## [0.1.0] - 2026-06-23
 
 Initial public release.
@@ -23,4 +47,5 @@ Initial public release.
 - **Data-free distribution:** ships only the framework plus a handful of generic example notes.
 - **Documentation** under `docs/` (SETUP, CONCEPTS, VAULT, COMMANDS) and a sample dashboard at `docs/examples/os-dashboard.md`.
 
+[0.2.0]: https://keepachangelog.com/en/1.1.0/
 [0.1.0]: https://keepachangelog.com/en/1.1.0/
