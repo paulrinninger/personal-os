@@ -154,6 +154,10 @@ dependencies). The script is idempotent: a second run won't clobber your existin
 5. **Setzt Env-Variablen** in `settings.json` → `env` (siehe Tabelle unten).
 6. **Optional: nächtlicher graphify-Rebuild** über `launchd` (macOS) bzw. `cron`
    (Linux), damit der Graph aktuell bleibt.
+7. **Optional: nächtliches Dreaming** (`--schedule-dream`, braucht Ollama) — ein
+   lokaler LLM-Pass, der ausschließlich Vorschläge nach `_inbox/dreams/` schreibt,
+   reviewt via `/dream review`. Läuft 30 Minuten nach dem Graph-Rebuild. Siehe
+   `docs/COMMANDS.md` §3c.
 
 **Env-Variablen, die der Installer setzt:**
 
@@ -163,6 +167,17 @@ dependencies). The script is idempotent: a second run won't clobber your existin
 | `PERSONAL_OS_OLLAMA` | `http://localhost:11434` | lokaler ollama-Endpunkt (optional) |
 | `PERSONAL_OS_LOG_DIR` | XDG-State-Dir / `~/.local/state/personal-os/logs` (macOS evtl. `~/Library/Logs`) | Fire-Log & Diagnose |
 | `PERSONAL_OS_LANG` | `en` (auch `de`) | Sprache der Hook-/Command-Oberfläche |
+| `PERSONAL_OS_DREAM_MODEL` | `llama3.2:3b` | Generierungsmodell für den optionalen Dreaming-Pass |
+
+### ChatGPT-Export importieren (optional, manuell, einmalig)
+
+Wenn du deine Daten von chatgpt.com exportierst (Settings → Data controls → Export), kannst du
+sie in denselben Vault übernehmen: `python3 scripts/chatgpt_to_obsidian.py --zip <export.zip>`.
+Schreibt eine Notiz pro Conversation nach `<vault>/chats/gpt/`, inkrementell (sicher mit einem
+neueren Export erneut ausführbar). Das ist **kein** Teil des Nightly-Schedulers — einmal
+ausführen, wenn ein Export vorliegt. Erwäge, `chats/gpt/` im Vault-Repo zu gitignoren, da eine
+ChatGPT-Historie oft persönlicher ist als Code-Transkripte; `/mine-chats` (das auch `chats/gpt/`
+beobachtet) ist das, was am Ende versioniert werden sollte.
 
 ### EN
 
@@ -177,6 +192,9 @@ dependencies). The script is idempotent: a second run won't clobber your existin
 5. **Sets env vars** in `settings.json` → `env` (see table below).
 6. **Optional: nightly graphify rebuild** via `launchd` (macOS) or `cron` (Linux), so
    the graph stays current.
+7. **Optional: nightly dreaming** (`--schedule-dream`, requires Ollama) — a local-LLM
+   consolidation pass that writes suggestions only to `_inbox/dreams/`, reviewed via
+   `/dream review`. Runs 30 minutes after the graph rebuild. See `docs/COMMANDS.md` §3c.
 
 **Env vars the installer sets:**
 
@@ -186,6 +204,17 @@ dependencies). The script is idempotent: a second run won't clobber your existin
 | `PERSONAL_OS_OLLAMA` | `http://localhost:11434` | local ollama endpoint (optional) |
 | `PERSONAL_OS_LOG_DIR` | XDG state dir / `~/.local/state/personal-os/logs` (macOS may use `~/Library/Logs`) | fire-log & diagnostics |
 | `PERSONAL_OS_LANG` | `en` (also `de`) | language of the hook/command UI |
+| `PERSONAL_OS_DREAM_MODEL` | `llama3.2:3b` | generation model for the optional dreaming pass |
+
+### Importing a ChatGPT export (optional, manual, one-off)
+
+If you export your data from chatgpt.com (Settings → Data controls → Export), you can pull it
+into the same vault: `python3 scripts/chatgpt_to_obsidian.py --zip <export.zip>`. It writes one
+note per conversation to `<vault>/chats/gpt/`, incrementally (safe to re-run on a newer export).
+This is **not** part of the nightly scheduler — run it once when you have an export. Consider
+gitignoring `chats/gpt/` in your vault repo, since a ChatGPT history is often more personal than
+coding transcripts; `/mine-chats` (which also watches `chats/gpt/`) is what should end up
+versioned.
 
 ---
 

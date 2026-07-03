@@ -9,6 +9,8 @@ What it does (and prints the full plan BEFORE touching anything):
   5. append the Personal OS section to ~/.claude/CLAUDE.md between sentinels (idempotent)
   6. write ~/.config/qmd/index.yml pointing at your vault, then build the first index
   7. optionally register a nightly graph rebuild
+  8. optionally register the nightly "dreaming" pass — local-LLM consolidation that
+     writes suggestions only (needs Ollama; separate opt-in from the graph rebuild)
 
 Never sets an API key. Re-runnable (idempotent). See uninstall.py to reverse.
 
@@ -19,6 +21,7 @@ Usage:
   python3 install/install.py --vault-path ~/notes --lang de --no-examples
   python3 install/install.py --link          # symlink scripts/hooks instead of copy (dev)
   python3 install/install.py --schedule      # also register the nightly graph rebuild
+  python3 install/install.py --schedule-dream  # also register the nightly dreaming pass
 """
 import argparse
 import json
@@ -34,7 +37,7 @@ HOME = os.path.expanduser("~")
 
 # Sentinels that identify OUR hook groups, so re-runs replace rather than duplicate.
 HOOK_SENTINELS = (
-    "recall-lessons.py", "risk-recall.py", "save_nudge.sh",
+    "recall-lessons.py", "risk-recall.py", "save_nudge.sh", "vault_autopush.sh",
     "checkpoint session log", "graphify: knowledge graph at graphify-out",
 )
 CLAUDE_MD_START = "<!-- personal-os:start -->"
@@ -72,6 +75,8 @@ def load_config(args):
         "install_examples": True,
         "schedule_nightly_graph": False,
         "import_chats_nightly": False,
+        "schedule_nightly_dream": False,
+        "dream_gen_model": "llama3.2:3b",
         "auto_install_deps": False,
     }
     if args.config:
@@ -86,6 +91,8 @@ def load_config(args):
         cfg["install_examples"] = False
     if args.schedule:
         cfg["schedule_nightly_graph"] = True
+    if args.schedule_dream:
+        cfg["schedule_nightly_dream"] = True
 
     cfg["vault_dir"] = expand(cfg["vault_dir"])
     cfg["claude_dir"] = expand(cfg["claude_dir"])
@@ -382,6 +389,58 @@ def setup_scheduler(cfg, tools, dry):
         print("   " + line)
 
 
+def setup_dream_scheduler(cfg, tools, dry):
+    """Optional second nightly job: local-LLM consolidation ('dreaming'). Off by
+    default — needs Ollama, and unlike the graph rebuild it makes a handful of LLM
+    calls, so it's opt-in even when --schedule is set."""
+    if not cfg["schedule_nightly_dream"]:
+        return
+    if not tools["ollama"]:
+        warn("ollama not installed — skipping nightly dream schedule (needs a local model)")
+        return
+    dream = os.path.join(cfg["scripts_dir"], "dream_run.sh")
+    system = platform.system()
+    info(f"nightly dreaming ({system})")
+    if dry:
+        return
+    if system == "Darwin":
+        label = "com.personal-os.dream"
+        plist = os.path.join(HOME, "Library", "LaunchAgents", label + ".plist")
+        os.makedirs(os.path.dirname(plist), exist_ok=True)
+        open(plist, "w").write(f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>{label}</string>
+  <key>ProgramArguments</key><array><string>/bin/sh</string><string>{dream}</string></array>
+  <key>EnvironmentVariables</key><dict>
+    <key>PERSONAL_OS_VAULT</key><string>{cfg['vault_dir']}</string>
+    <key>PERSONAL_OS_SCRIPTS_DIR</key><string>{cfg['scripts_dir']}</string>
+    <key>PERSONAL_OS_LOG_DIR</key><string>{cfg['log_dir']}</string>
+    <key>PERSONAL_OS_HOME</key><string>{cfg['personal_os_home']}</string>
+    <key>PERSONAL_OS_OLLAMA</key><string>{cfg['ollama_endpoint']}</string>
+    <key>PERSONAL_OS_EMBED_MODEL</key><string>{cfg['embed_model']}</string>
+    <key>PERSONAL_OS_DREAM_MODEL</key><string>{cfg['dream_gen_model']}</string>
+  </dict>
+  <key>ProcessType</key><string>Background</string>
+  <key>Nice</key><integer>10</integer>
+  <key>LowPriorityIO</key><true/>
+  <key>StartCalendarInterval</key><dict><key>Hour</key><integer>4</integer><key>Minute</key><integer>45</integer></dict>
+</dict></plist>
+""")
+        subprocess.run(["launchctl", "unload", plist], capture_output=True)
+        subprocess.run(["launchctl", "load", plist], capture_output=True)
+        ok(f"launchd job loaded ({label}) — 04:45, 30min after the graph rebuild")
+    else:
+        line = f"45 4 * * * PERSONAL_OS_VAULT={cfg['vault_dir']} " \
+               f"PERSONAL_OS_SCRIPTS_DIR={cfg['scripts_dir']} " \
+               f"PERSONAL_OS_HOME={cfg['personal_os_home']} " \
+               f"PERSONAL_OS_OLLAMA={cfg['ollama_endpoint']} " \
+               f"PERSONAL_OS_EMBED_MODEL={cfg['embed_model']} " \
+               f"PERSONAL_OS_DREAM_MODEL={cfg['dream_gen_model']} /bin/sh {dream}"
+        warn("Linux: add this to your crontab (`crontab -e`) or a systemd user timer:")
+        print("   " + line)
+
+
 # --------------------------------------------------------------------- main
 
 def main():
@@ -392,6 +451,8 @@ def main():
     ap.add_argument("--no-examples", action="store_true")
     ap.add_argument("--link", action="store_true", help="symlink instead of copy (dev)")
     ap.add_argument("--schedule", action="store_true")
+    ap.add_argument("--schedule-dream", action="store_true",
+                    help="also register the optional nightly dreaming pass (needs ollama)")
     ap.add_argument("--no-embed", action="store_true",
                     help="don't build the qmd index now (do it later with qmd update && qmd embed)")
     ap.add_argument("--yes", "-y", action="store_true")
@@ -432,6 +493,7 @@ def main():
     append_claude_md(cfg, args.dry_run)
     setup_qmd(cfg, tools, args.dry_run, args.no_embed)
     setup_scheduler(cfg, tools, args.dry_run)
+    setup_dream_scheduler(cfg, tools, args.dry_run)
 
     print()
     ok("Personal OS installed.")

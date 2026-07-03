@@ -5,6 +5,29 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Nightly "dreaming" pass** (`scripts/dream.py` + `scripts/dream_run.sh`, `/dream` command,
+  `install.py --schedule-dream`): an optional third nightly job that consolidates the vault while
+  you sleep — condenses yesterday's residue, proposes `[[wikilinks]]` between notes that never
+  reference each other, pre-chews lesson merge/cross-link candidates for `/lessons-gc`, surfaces
+  firing-pattern observations from the recall hooks, and ranks the review inbox against your
+  active projects. Writes exactly one suggestions-only note per night to `_inbox/dreams/`; never
+  edits a live note. Only its residue pass touches an LLM at all (hard-capped call count); the rest
+  is qmd/embeddings-only, $0. Requires Ollama; separate opt-in from `--schedule` since it makes
+  real (if capped) LLM calls. Feedback from `/dream review` adaptively tunes each pass's
+  thresholds/caps over time (counters only, no ML). New `os_doctor.py` check reports whether it's
+  running.
+- **ChatGPT export import** (`scripts/chatgpt_to_obsidian.py`): converts a ChatGPT data export
+  (zip) into the vault (`chats/gpt/`), one note per conversation, incrementally — same rule-based,
+  $0 tagging as `claude_to_obsidian.py`. Reads the zip directly (no extraction). Manual, one-off
+  tool, not part of the nightly scheduler; `/mine-chats` was extended to also watch `chats/gpt/`.
+- **`vault_autopush.sh`** + Stop-hook wiring: commits and pushes any pending vault changes to its
+  git remote at the end of every session, not just at the next scheduled graph rebuild. No-op if
+  the vault isn't a git repo with a remote configured.
+
 ## [0.2.0] - 2026-06-24
 
 ### Added

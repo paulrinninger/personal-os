@@ -78,6 +78,11 @@
             "type": "command",
             "command": "/bin/sh \"${PERSONAL_OS_SCRIPTS_DIR}/save_nudge.sh\" 2>/dev/null || true",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "/bin/sh \"${PERSONAL_OS_SCRIPTS_DIR}/vault_autopush.sh\" 2>/dev/null || true",
+            "timeout": 20
           }
         ]
       }

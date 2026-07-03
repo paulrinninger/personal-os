@@ -37,9 +37,11 @@ types, and templates.
 ├── logs/               # datierte Session-Logs (/save)
 ├── permanent/          # langlebige, kuratierte Evergreen-Notizen
 ├── _inbox/             # Harvest-Drafts (status: draft) — außerhalb der qmd-Collection, nicht im Recall
+│   └── dreams/         # optional: nächtliche Dream-Notizen (dream_run.sh), reviewt via /dream review
 └── chats/
     ├── code/           # importierte Claude-Code-Transkripte
-    └── web/            # importierte Web-Chat-Transkripte
+    ├── web/            # importierte Web-Chat-Transkripte
+    └── gpt/            # optional: ChatGPT-Export-Import (chatgpt_to_obsidian.py), oft gitignored
 ```
 
 ### EN
@@ -65,9 +67,11 @@ types, and templates.
 ├── logs/               # dated session logs (/save)
 ├── permanent/          # long-lived, curated evergreen notes
 ├── _inbox/             # harvest drafts (status: draft) — outside the qmd collection, not in recall
+│   └── dreams/         # optional: nightly dream notes (dream_run.sh), reviewed via /dream review
 └── chats/
     ├── code/           # imported Claude Code transcripts
-    └── web/            # imported web-chat transcripts
+    ├── web/            # imported web-chat transcripts
+    └── gpt/            # optional: ChatGPT export import (chatgpt_to_obsidian.py), often gitignored
 ```
 
 ---

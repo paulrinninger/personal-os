@@ -18,5 +18,9 @@
   "_import_chats_nightly_note": "OFF by default. If true (and you scheduled the nightly job), imports ALL your Claude Code transcripts into the vault so /mine-chats has input. This is a privacy choice — chats stay local and chats/ is gitignored, but enable it knowingly.",
   "import_chats_nightly": false,
 
+  "_dream_note": "Nightly local-LLM consolidation ('dreaming') — a suggestions-only digest at _inbox/dreams/, reviewed via /dream review. Needs Ollama. Separate opt-in from schedule_nightly_graph since it makes LLM calls (capped, but still real compute).",
+  "schedule_nightly_dream": false,
+  "dream_gen_model": "llama3.2:3b",
+
   "auto_install_deps": false
 }

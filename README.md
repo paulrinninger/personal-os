@@ -133,6 +133,8 @@ git clone <repo> && cd personal-os
 
 The installer creates `~/vault`, merges the commands/hooks/skills into `~/.claude` **without clobbering** your existing settings, writes the qmd index config, and builds the first index. Then open Claude Code in **any** project and try `/lesson`, `/save`, `/os`. Verify wiring anytime with `python3 install/doctor.py` (it runs a real recall query end-to-end).
 
+Two things stay opt-in even with `install.sh`: pass `--schedule` for the nightly graph rebuild, and `--schedule-dream` (needs Ollama) for the nightly dreaming pass.
+
 ---
 
 ## Commands
@@ -147,13 +149,14 @@ The installer creates `~/vault`, merges the commands/hooks/skills into `~/.claud
 | `/mine-chats` | Distill learnings from imported chat transcripts |
 | `/lessons-gc` | Prune cold, stale, and duplicate lessons to keep the store sharp |
 | `/harvest` | Distill lessons & ideas from sessions that ended without `/save`, into a review inbox |
+| `/dream` | Show (or `review`) the optional nightly "dreaming" note — suggestions only, never auto-applied |
 
 ---
 
 ## Requirements
 
 - **OS:** macOS or Linux (Windows via WSL) · **Claude Code** · **Python 3**
-- **qmd** — required (semantic recall) · **graphify** — optional (structural recall) · **ollama** — optional (`/lessons-gc` dedup)
+- **qmd** — required (semantic recall) · **graphify** — optional (structural recall) · **ollama** — optional (`/lessons-gc` dedup, and the optional nightly dreaming pass)
 
 The repo ships **data-free**: just the framework plus a handful of generic example notes (e.g. *"never force-push a shared branch"*, *"cap LLM API costs"*). See [`docs/`](docs/) for **SETUP**, **CONCEPTS**, **VAULT**, **COMMANDS**, and [`docs/examples/os-dashboard.md`](docs/examples/os-dashboard.md) for a sample dashboard.
 
@@ -173,7 +176,11 @@ The repo ships **data-free**: just the framework plus a handful of generic examp
 
 **Can I use my existing Obsidian vault?** Yes — the vault is just an Obsidian-style markdown folder. The installer won't clobber existing `~/.claude` settings; point the index at your own vault if you prefer.
 
-**What if I skip graphify / ollama?** Both are optional. Without graphify you lose structural (graph) recall but keep full semantic recall. Without ollama you lose only the dedup pass in `/lessons-gc`. qmd is the one required dependency.
+**What if I skip graphify / ollama?** Both are optional. Without graphify you lose structural (graph) recall but keep full semantic recall. Without ollama you lose the dedup pass in `/lessons-gc` and the optional nightly dreaming pass. qmd is the one required dependency.
+
+**What's "dreaming"?** An optional third nightly job (`--schedule-dream`) that runs a small local model over the day's changes — condensing yesterday, suggesting `[[wikilinks]]` between notes that never reference each other, flagging lesson merge candidates, ranking your review inbox. It writes one suggestions-only note per night to `_inbox/dreams/` and never touches a live note; you review it with `/dream review`. Most of its passes are pure embeddings/graph work with no LLM at all — see `docs/COMMANDS.md` §3c.
+
+**Can I import my ChatGPT history?** Yes — `scripts/chatgpt_to_obsidian.py --zip <export.zip>` converts a ChatGPT data export into the same vault (`chats/gpt/`), incrementally, so `/mine-chats` can distill it. It's a manual one-off, not part of the nightly scheduler; see `docs/SETUP.md`.
 
 **Is my data sent anywhere?** No. Inference is local and the vault stays on your machine. Nothing is uploaded.
 

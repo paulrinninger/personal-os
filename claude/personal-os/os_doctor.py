@@ -85,6 +85,9 @@ S = {
         "queue_wait": "{} session(s) waiting → /harvest",
         "inbox": "Inbox drafts", "inbox_none": "none open",
         "inbox_n": "{} draft(s) → /harvest review",
+        "dream": "Dreaming (nightly)", "dream_none": "not scheduled (optional)",
+        "dream_off": "disabled via dream.off (intentional)",
+        "dream_age": "last activity {}h ago",
         "verdict": "{}: {} FAIL · {} WARN · {} OK",
     },
     "de": {
@@ -109,6 +112,9 @@ S = {
         "queue_wait": "{} Session(s) warten → /harvest",
         "inbox": "Inbox-Drafts", "inbox_none": "keine offen",
         "inbox_n": "{} Draft(s) → /harvest review",
+        "dream": "Dreaming (nightly)", "dream_none": "nicht geplant (optional)",
+        "dream_off": "per dream.off deaktiviert (bewusst)",
+        "dream_age": "letzte Aktivität vor {}h",
         "verdict": "{}: {} FAIL · {} WARN · {} OK",
     },
 }
@@ -227,10 +233,25 @@ hq = os.path.join(PO, "harvest-queue.jsonl")
 n = sum(1 for l in open(hq, encoding="utf-8", errors="replace") if l.strip()) if os.path.exists(hq) else 0
 add("PASS" if n == 0 else "WARN", t("queue"), t("queue_empty") if n == 0 else t("queue_wait").format(n))
 
-# 10) inbox drafts reviewed
-inbox = glob.glob(os.path.join(VAULT, "_inbox", "**", "*.md"), recursive=True)
+# 10) inbox drafts reviewed (dreams/ has its own /dream review lifecycle — don't double-count)
+inbox = [p for p in glob.glob(os.path.join(VAULT, "_inbox", "**", "*.md"), recursive=True)
+         if os.sep + "dreams" + os.sep not in p]
 add("PASS" if not inbox else "WARN", t("inbox"),
     t("inbox_none") if not inbox else t("inbox_n").format(len(inbox)))
+
+# 11) dreaming ran — optional, INFO if never configured, never FAIL
+if os.path.exists(os.path.join(PO, "dream.off")):
+    add("INFO", t("dream"), t("dream_off"))
+else:
+    dreams = sorted(glob.glob(os.path.join(VAULT, "_inbox", "dreams", "*-dream.md")))
+    dream_note_age = age_h(dreams[-1]) if dreams else None
+    dream_log_age = age_h(os.path.join(_log_dir(), "dream.log"))
+    candidates = [a for a in (dream_note_age, dream_log_age) if a is not None]
+    if not candidates:
+        add("INFO", t("dream"), t("dream_none"))
+    else:
+        best = min(candidates)
+        add("PASS" if best < 36 else "WARN", t("dream"), t("dream_age").format(int(best)))
 
 # --- report ---
 ICON = {"PASS": "✓", "WARN": "⚠", "FAIL": "✗", "INFO": "·"}

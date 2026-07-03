@@ -2,11 +2,11 @@
 
 > **DE zuerst, dann EN.** Each section has a German half and an English half.
 
-Vollständige Referenz: die 8 Slash-Commands, die 2 Hooks und die Engines `os_lessons.py` /
-`os_doctor.py` — was jedes tut, wann es läuft, was es liest/schreibt.
+Vollständige Referenz: die 9 Slash-Commands, die 2 Hooks und die Engines `os_lessons.py` /
+`os_doctor.py` (+ optional `dream.py`) — was jedes tut, wann es läuft, was es liest/schreibt.
 
-Complete reference: the 8 slash commands, the 2 hooks, and the engines (`os_lessons.py`,
-`os_doctor.py`) — what each does, when it runs, what it reads/writes.
+Complete reference: the 9 slash commands, the 2 hooks, and the engines (`os_lessons.py`,
+`os_doctor.py`, + optional `dream.py`) — what each does, when it runs, what it reads/writes.
 
 ---
 
@@ -26,6 +26,7 @@ Installiert nach / installed to: `~/.claude/commands/`
 | `/mine-chats` | Destilliert inkrementell Learnings aus importierten Claude-Chat-Transkripten. | Nach neuen Chat-Imports. | Liest `chats/`, schreibt Lessons/Wissen; State-File für Inkrement. |
 | `/lessons-gc` | Räumt kalte/veraltete/doppelte Lessons aus. **Löscht nie ohne Rückfrage.** | Zur Pflege, gelegentlich. | Liest `lessons/`; optional ollama-Embeddings für Near-Dubletten. |
 | `/harvest` | Verarbeitet die Auto-Harvest-Queue: destilliert Lessons/Ideen aus Sessions, die **ohne `/save`** endeten, in die Review-Inbox `_inbox/`. | Wenn die Queue gefüllt ist (`/os doctor` zeigt's). | Liest Queue + Transkripte; schreibt Drafts nach `_inbox/`. |
+| `/dream` | Zeigt die nächtliche Dream-Notiz (falls `dream_run.sh` geplant ist); `/dream review` geht ihre Checkboxen durch und führt Zusagen über die bestehenden Commands aus. | Optional, wenn Dreaming aktiviert ist. | Liest `_inbox/dreams/`; `review` schreibt Wikilinks/Feedback. |
 
 ### EN
 
@@ -39,6 +40,7 @@ Installiert nach / installed to: `~/.claude/commands/`
 | `/mine-chats` | Incrementally distills learnings from imported Claude chat transcripts. | After new chat imports. | Reads `chats/`, writes lessons/knowledge; state-file for incrementing. |
 | `/lessons-gc` | Prunes cold/stale/duplicate lessons. **Never deletes without asking.** | For maintenance, occasionally. | Reads `lessons/`; optional ollama embeddings for near-duplicates. |
 | `/harvest` | Processes the auto-harvest queue: distills lessons/ideas from sessions that ended **without `/save`** into the review inbox `_inbox/`. | When the queue has items (`/os doctor` shows it). | Reads the queue + transcripts; writes drafts to `_inbox/`. |
+| `/dream` | Shows the nightly dream note (if `dream_run.sh` is scheduled); `/dream review` walks its checkboxes and executes accepted ones via the existing commands. | Optional, when dreaming is enabled. | Reads `_inbox/dreams/`; `review` writes wikilinks/feedback. |
 
 ---
 
@@ -120,6 +122,29 @@ smoke test).
 
 ---
 
+## 3c. Optional: Dreaming — `dream.py` / `dream_run.sh`
+
+### DE
+
+Optionaler dritter Nightly-Job (Ollama vorausgesetzt), registrierbar via `install.py
+--schedule-dream`. Läuft 30 Minuten nach dem Graph-Rebuild und arbeitet fünf Pässe ab
+(Feuer-Muster, Lesson-Konsolidierung, implizite Verbindungen, Tagesrest-Digest, Inbox-
+Triage) — alle bis auf den Tagesrest-Pass sind reine Embedding-/Python-Pässe ohne LLM.
+Schreibt **ausschließlich** eine Vorschlags-Notiz nach `_inbox/dreams/`, ändert nie
+selbst eine Notiz. Aus/An: Datei `dream.off` im Engine-Home-Verzeichnis. Review via
+**`/dream review`**.
+
+### EN
+
+Optional third nightly job (requires Ollama), registered via `install.py
+--schedule-dream`. Runs 30 minutes after the graph rebuild and works through five
+passes (firing patterns, lesson consolidation, implicit connections, day-residue
+digest, inbox triage) — all but the residue pass are embeddings/Python only, no LLM.
+Writes **only** a suggestions note to `_inbox/dreams/`; never edits a note itself.
+On/off: a `dream.off` file in the engine's home dir. Review via **`/dream review`**.
+
+---
+
 ## 4. Auf einen Blick / At a glance
 
 ### DE
@@ -129,6 +154,7 @@ smoke test).
   außerdem `/resume`
 - **Maintain / Self-Heal**: `/os` (+ `os_lessons.py health`), `/os doctor` (+ `os_doctor.py`),
   `/lessons-gc` (+ `os_lessons.py gc`)
+- **Optional**: Dreaming (`dream.py` + `dream_run.sh`, nightly, reviewt via `/dream review`)
 
 ### EN
 
@@ -137,3 +163,4 @@ smoke test).
   plus `/resume`
 - **Maintain / self-heal**: `/os` (+ `os_lessons.py health`), `/os doctor` (+ `os_doctor.py`),
   `/lessons-gc` (+ `os_lessons.py gc`)
+- **Optional**: dreaming (`dream.py` + `dream_run.sh`, nightly, reviewed via `/dream review`)
