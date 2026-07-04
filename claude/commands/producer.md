@@ -34,8 +34,7 @@ session, after you say yes.
 5. Append one line per decision to `~/.personal-os/producer-feedback.jsonl`:
    `{"id":"<draft-id>","pass":"producer","verdict":"accepted|rejected","ts":"<ISO>"}` — a separate
    channel from `~/.personal-os/dream-feedback.jsonl` (different acceptance context; mixing them
-   would skew the
-   other dreaming passes' adaptive thresholds).
+   would skew the other dreaming passes' adaptive thresholds).
 6. Report: N drafts created (with subject/recipient), M discarded, how many queue entries are still
    incomplete (per the latest `producer.json` pass state).
 

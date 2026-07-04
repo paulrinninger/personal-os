@@ -29,9 +29,14 @@ it is pure suggestion. Kill switch: a file named `dream.off` in the engine's hom
    - Hot lesson (`^d…-f…`): open the lesson, propose sharpening the rule, only edit after a yes.
    - Inbox-triage entry (`^d…-t…`): treat exactly like `/harvest review` — promote (dedup first) or
      mark `status: parked`.
+   - Venture pattern (`^d…-v…`): no file to change — it's a pure observation. Yes = "this pattern
+     was accurate/useful" (the new project really does resemble past failures), no = "false alarm,
+     not actually similar." Either way just log the feedback (step 3) — there's nothing to execute.
 3. Append one line per decision to `~/.claude/personal-os/dream-feedback.jsonl` (path via
-   `PERSONAL_OS_HOME` if set): `{"id":"<block-id>","pass":"connections|gc|fires|triage","verdict":"accepted|rejected","ts":"<ISO>"}`.
-   This is what makes the next run's thresholds adapt — no ML, just counters.
+   `PERSONAL_OS_HOME` if set): `{"id":"<block-id>","pass":"connections|gc|fires|triage|ventures","verdict":"accepted|rejected","ts":"<ISO>"}`.
+   This is what makes the next run's thresholds adapt — no ML, just counters. (Without `"ventures"`
+   here, feedback on venture patterns would never reach `adaptive_params("ventures")`, which reads
+   exactly this file.)
 4. Check off reviewed boxes in the dream note (`- [x]`); once all are handled, set `status: reviewed`
    in its frontmatter.
 5. Report: N accepted / M rejected, which files changed.
