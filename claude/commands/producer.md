@@ -6,8 +6,9 @@ argument-hint: "[optional: 'review' = go through pending drafts]"
 You're working with the optional `producer` pass of the nightly dreaming job (`dream_run.sh` /
 `dream.py`, registered via the installer's `--schedule-dream` flag). It renders pure template text
 from `~/.personal-os/producer-queue.jsonl` — a queue **you fill in yourself** with real lead data,
-required fields `observation`/`pain_point` (a model can't invent a real prospect's pain point, so
-entries missing either are skipped, never silently generated) — against
+required fields `id` (identifies the entry so it can be cleared from the queue once rendered) and
+`observation`/`pain_point` (a model can't invent a real prospect's pain point, so entries missing
+any of these are skipped, never silently generated) — against
 `~/.personal-os/producer-templates.json` into `~/vault/_inbox/producer-drafts/`. **No LLM call is
 involved in rendering.** Since `dream.py` runs as a standalone cron script with no MCP access, it
 can never send anything or create a real Gmail draft — that only ever happens here, in this

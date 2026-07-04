@@ -145,8 +145,9 @@ Business-Prosa variieren mit deinem Schreibstil; siehe Kommentar bei `VENTURES_M
 in `dream.py`.
 
 **Producer** (`producer`): rendert reinen Template-Text aus einer von dir befüllten
-`producer-queue.jsonl` (Pflichtfelder `observation`/`pain_point` — MÜSSEN von dir kommen,
-niemals vom Pass erfunden) nach `_inbox/producer-drafts/`. **Kein LLM-Call** — nur
+`producer-queue.jsonl` (Pflichtfelder `id`, `observation`/`pain_point` — `id` identifiziert
+den Eintrag für die Warteschlangen-Bereinigung nach dem Rendern, `observation`/`pain_point`
+MÜSSEN von dir kommen, niemals vom Pass erfunden) nach `_inbox/producer-drafts/`. **Kein LLM-Call** — nur
 `str.format()` gegen `producer-templates.json` (Beispiele: `config/producer-*.example.*`).
 Da `dream.py` als Cron-Skript ohne MCP-Zugriff läuft, entstehen echte Gmail-Entwürfe
 ausschließlich über **`/producer review`**.
@@ -170,8 +171,9 @@ cosine scores for business prose vary with your writing style; see the comment n
 `VENTURES_MIN_THRESHOLD` in `dream.py`.
 
 **Producer** (`producer`): renders pure template text from a `producer-queue.jsonl` you
-fill in yourself (required fields `observation`/`pain_point` — MUST come from you, never
-invented by the pass) into `_inbox/producer-drafts/`. **No LLM call** — just
+fill in yourself (required fields `id`, `observation`/`pain_point` — `id` identifies the
+entry so it can be cleared from the queue once rendered, `observation`/`pain_point` MUST
+come from you, never invented by the pass) into `_inbox/producer-drafts/`. **No LLM call** — just
 `str.format()` against `producer-templates.json` (examples: `config/producer-*.example.*`).
 Since `dream.py` runs as a cron script with no MCP access, real Gmail drafts are only
 ever created via **`/producer review`**.

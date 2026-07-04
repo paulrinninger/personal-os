@@ -14,11 +14,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   projects for a shared "shape", using embeddings plus a transitive similarity check (candidate siblings
   must also resemble *each other*, not just the new project) to keep false positives out — capped at
   one pattern a night, with an optional single LLM call only to phrase the verdict. `producer` renders
-  cold-outreach drafts from a `producer-queue.jsonl` you fill in yourself (required fields
-  `observation`/`pain_point` — never invented) against `producer-templates.json`, pure `str.format()`,
-  no LLM call. Since `dream.py` runs as a cron script with no MCP access, real Gmail drafts are only
-  ever created by the new `/producer review` command, mirroring the existing `/dream review` /
-  `/harvest review` draft-then-approve pattern. Example configs: `config/producer-*.example.*`.
+  cold-outreach drafts from a `producer-queue.jsonl` you fill in yourself (required fields `id`,
+  `observation`/`pain_point` — the latter two never invented) against `producer-templates.json`, pure
+  `str.format()`, no LLM call. Since `dream.py` runs as a cron script with no MCP access, real Gmail
+  drafts are only ever created by the new `/producer review` command, mirroring the existing
+  `/dream review` / `/harvest review` draft-then-approve pattern. Example configs:
+  `config/producer-*.example.*`.
+- **Adversarial bug-audit of the above two passes** (5 rounds, same session): fixed a cursor bug where
+  `ventures` silently marked candidate hubs "checked" without ever evaluating them once its nightly cap
+  was hit; a cluster-search bug that could miss a valid sibling pair not anchored to the top match; a
+  bug where the `producer` lead queue was never drained, so any unreviewed entry re-rendered into a new
+  duplicate draft every night; non-atomic pass-state writes that a killed run could leave torn (silently
+  read back as "already done"); a producer-templates parse error that looked identical to "nothing
+  queued tonight"; world-readable permissions on the pass-state directory (now owner-only for new
+  folders); a vision-model refusal that could pass through as an ordinary `public`-classified photo
+  description; and — the most consequential of the bunch — `/producer review`'s and `/dream review`'s
+  accept/reject feedback never actually reaching `adaptive_params()` for either pass, since the reviewed-
+  and-documented feedback schema didn't match what the code filtered on. Each finding independently
+  reproduced (regex tests, synthetic-vector simulations, isolated end-to-end runs) before fixing.
 - **Nightly "dreaming" pass** (`scripts/dream.py` + `scripts/dream_run.sh`, `/dream` command,
   `install.py --schedule-dream`): an optional third nightly job that consolidates the vault while
   you sleep — condenses yesterday's residue, proposes `[[wikilinks]]` between notes that never
