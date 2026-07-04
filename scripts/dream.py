@@ -616,7 +616,11 @@ def cmd_ventures(args):
             siblings_pool.append({"path": path, "vec": vec})
 
     patterns = []
+    evaluated = []  # (path, mt) ACTUALLY evaluated — cursor may only advance for these,
+                    # never for candidates the cap-triggered break never reached (else
+                    # they'd be marked "checked" forever without ever being checked)
     for path, mt, meta in candidates:
+        evaluated.append((path, mt))
         vec = _ventures_embed_of(cache, path, mt)
         if not vec:
             continue
@@ -626,17 +630,23 @@ def cmd_ventures(args):
         matches = [(score, s) for score, s in scored if score * 100 >= threshold]
         if len(matches) < min_sib:
             continue
-        # Transitive brake: among the top matches, require a group that's also similar
-        # to EACH OTHER (not just to the candidate) — stops two projects that happen to
-        # both land near the candidate, but have nothing to do with each other, from
-        # being reported as "a pattern".
-        cluster = [matches[0]]
-        for score, s in matches[1:]:
-            if all(cosine(s["vec"], m[1]["vec"]) * 100 >= sib_threshold for m in cluster):
-                cluster.append((score, s))
-            if len(cluster) >= min_sib:
+        # Transitive brake: try EVERY match as a potential cluster seed, not just
+        # matches[0] — otherwise a real pair among matches[1:] that's mutually similar
+        # but doesn't happen to match the top-scored candidate would be missed entirely.
+        cluster = None
+        for i in range(len(matches)):
+            cand_cluster = [matches[i]]
+            for j, (score, s) in enumerate(matches):
+                if j == i:
+                    continue
+                if all(cosine(s["vec"], m[1]["vec"]) * 100 >= sib_threshold for m in cand_cluster):
+                    cand_cluster.append((score, s))
+                if len(cand_cluster) >= min_sib:
+                    break
+            if len(cand_cluster) >= min_sib:
+                cluster = cand_cluster
                 break
-        if len(cluster) < min_sib:
+        if not cluster:
             continue
         sib_paths = [s["path"] for _, s in cluster]
         stand_lines = [f"[[{os.path.basename(sp)[:-3]}]]: {_stand_first_line(sp)}" for sp in sib_paths]
@@ -661,7 +671,7 @@ def cmd_ventures(args):
         if len(patterns) >= p.get("cap", 1):
             break
 
-    for path, mt, _ in candidates:  # advance cursor only after processing ALL candidates
+    for path, mt in evaluated:  # only for candidates actually evaluated above, not all candidates
         cursor[path] = mt
     tmp = VENTURES_CURSOR + ".tmp"
     json.dump(cursor, open(tmp, "w"))
@@ -695,17 +705,23 @@ def cmd_producer(args):
                     continue
 
     def complete(e):
+        # id is required too, not just observation/pain_point — the queue-drain step
+        # below dedupes rendered entries BY id, so an id-less entry could never be
+        # safely removed from the queue after rendering (and two id-less entries would
+        # collide on the same draft filename, `{date}-x.md`).
         lead = e.get("lead", {})
         # These two fields MUST come from you — a model has no basis to invent a real
         # lead's pain point, and doing so is exactly the failure mode this pass exists
         # to avoid. Missing either -> skipped, never silently generated.
-        return bool(lead.get("observation")) and bool(lead.get("pain_point"))
+        return bool(e.get("id")) and bool(lead.get("observation")) and bool(lead.get("pain_point"))
 
     incomplete = [e for e in entries if not complete(e)]
-    valid = [e for e in entries if complete(e)][:p["cap"]]
+    complete_entries = [e for e in entries if complete(e)]
+    valid = complete_entries[:p["cap"]]
 
     os.makedirs(PRODUCER_DRAFTS_DIR, exist_ok=True)
     drafts = []
+    rendered_ids = set()
     for e in valid:
         tmpl = templates.get(e.get("playbook", ""))
         if not tmpl:
@@ -734,10 +750,22 @@ def cmd_producer(args):
             ]))
         drafts.append({"id": e.get("id"), "lead_company": lead.get("company", "?"),
                        "playbook": e.get("playbook"), "file": note})
+        rendered_ids.add(e["id"])
+
+    # Drain the queue: keep only entries that were NOT successfully rendered this run
+    # (incomplete, or complete but past tonight's cap) — otherwise every un-reviewed lead
+    # would get re-rendered into a NEW, duplicate draft file every single night, since
+    # nothing previously trimmed the queue after a successful render.
+    remaining = [e for e in entries if e.get("id") not in rendered_ids]
+    tmp = PRODUCER_QUEUE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        for e in remaining:
+            f.write(json.dumps(e, ensure_ascii=False) + "\n")
+    os.replace(tmp, PRODUCER_QUEUE)
 
     write_pass(args, "producer", {
         "params": p, "drafts": drafts, "incomplete": len(incomplete),
-        "queue_remaining": len(entries) - len(valid),
+        "queue_remaining": len(remaining),
     })
 
 
@@ -817,7 +845,14 @@ def cmd_report(args):
         for draft in prod["drafts"]:
             lines.append(f"- {draft['lead_company']} ({draft['playbook']})")
         if prod.get("incomplete"):
-            lines.append(f"- ({prod['incomplete']} queue entries incomplete — observation/pain_point missing)")
+            # "incomplete" bundles 3 distinct causes (required field/id missing, unknown
+            # playbook, missing template variable) — the text must not name just one of
+            # them as THE cause, or it points at the wrong root cause for the other two.
+            lines.append(f"- ({prod['incomplete']} queue entries incomplete/invalid — "
+                         f"required field/id missing, unknown playbook, or missing template variable)")
+        overflow = prod.get("queue_remaining", 0) - prod.get("incomplete", 0)
+        if overflow > 0:
+            lines.append(f"- ({overflow} more complete entries waiting — tonight's cap reached)")
         sec.append("\n".join(lines))
 
     if not sec:
