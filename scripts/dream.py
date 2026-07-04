@@ -42,12 +42,13 @@ Usage: dream.py <fires|gc-digest|connections|residue|triage|report> [--date YYYY
 Typically driven by dream_run.sh (RAM pre-flight, kill switch, one pass per invocation).
 """
 from __future__ import annotations
-import argparse, datetime as dt, glob, json, math, os, re, subprocess, sys, urllib.request
+import argparse, datetime as dt, glob, json, math, os, re, shutil, subprocess, sys, urllib.request
 
 VAULT = os.path.expanduser(os.environ.get("PERSONAL_OS_VAULT", "~/vault"))
 PO = os.path.expanduser(os.environ.get("PERSONAL_OS_HOME", os.path.join(
     os.path.expanduser(os.environ.get("PERSONAL_OS_CLAUDE_DIR", "~/.claude")), "personal-os")))
 WORK_ROOT = os.path.join(PO, "dream-work")
+DREAM_WORK_RETENTION_DAYS = 7  # short window: holds real lead names / venture-verdict text
 CURSOR_FILE = os.path.join(PO, "dream-cursor.json")
 FEEDBACK_FILE = os.path.join(PO, "dream-feedback.jsonl")
 EMBED_CACHE = os.path.join(PO, "dream-embeds.json")
@@ -108,6 +109,25 @@ def workdir(args) -> str:
     # creation time, so this hardens new date-folders going forward, not existing ones.
     os.makedirs(d, mode=0o700, exist_ok=True)
     return d
+
+
+def prune_dream_work(days: int = DREAM_WORK_RETENTION_DAYS) -> None:
+    # real wall-clock age, not the possibly-overridden --date, so a manual backfill run
+    # never keeps stale lead/verdict data around longer than the retention window.
+    cutoff = dt.date.today() - dt.timedelta(days=days)
+    if not os.path.isdir(WORK_ROOT):
+        return
+    for name in sorted(os.listdir(WORK_ROOT)):
+        path = os.path.join(WORK_ROOT, name)
+        if not os.path.isdir(path):
+            continue
+        try:
+            folder_date = dt.date.fromisoformat(name)
+        except ValueError:
+            continue
+        if folder_date < cutoff:
+            shutil.rmtree(path)
+            log(f"[prune] dream-work/{name} removed (older than {days}d)")
 
 
 def pass_done(args, name: str) -> bool:
@@ -928,6 +948,7 @@ def main():
     ap.add_argument("--force", action="store_true", help="recompute a pass even if resume-cached")
     args = ap.parse_args()
     os.makedirs(PO, exist_ok=True)
+    prune_dream_work()
     {"fires": cmd_fires, "gc-digest": cmd_gc_digest, "connections": cmd_connections,
      "residue": cmd_residue, "triage": cmd_triage, "ventures": cmd_ventures,
      "producer": cmd_producer, "report": cmd_report}[args.cmd](args)
