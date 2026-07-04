@@ -102,20 +102,38 @@ def today(args) -> str:
 
 def workdir(args) -> str:
     d = os.path.join(WORK_ROOT, today(args))
-    os.makedirs(d, exist_ok=True)
+    # owner-only: this now holds producer lead names / ventures verdict text (added this
+    # round), not just low-sensitivity pass counters like before — mode= only applies at
+    # creation time, so this hardens new date-folders going forward, not existing ones.
+    os.makedirs(d, mode=0o700, exist_ok=True)
     return d
 
 
 def pass_done(args, name: str) -> bool:
-    return os.path.exists(os.path.join(workdir(args), name + ".json")) and not args.force
+    if args.force:
+        return False
+    path = os.path.join(workdir(args), name + ".json")
+    if not os.path.exists(path):
+        return False
+    try:
+        json.load(open(path, encoding="utf-8"))
+        return True
+    except Exception:
+        return False  # torn file from an interrupted run -- treat as not-done, retry
 
 
 def write_pass(args, name: str, data: dict):
     data["_pass"] = name
     data["_ts"] = dt.datetime.now().isoformat(timespec="seconds")
-    with open(os.path.join(workdir(args), name + ".json"), "w", encoding="utf-8") as f:
+    path = os.path.join(workdir(args), name + ".json")
+    # atomic tmp+replace write, same pattern already used for the cursor/embed-cache/queue
+    # files -- without it, the orchestrator's timeout can SIGTERM mid-json.dump and leave a
+    # torn file that pass_done() would otherwise misread as "done".
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=1)
-    log(f"[{name}] wrote {os.path.join(workdir(args), name + '.json')}")
+    os.replace(tmp, path)
+    log(f"[{name}] wrote {path}")
 
 
 def adaptive_params(pass_name: str) -> dict:
@@ -840,7 +858,12 @@ def cmd_report(args):
             lines.append(f"- [ ] [[{pat['new_hub']}]] resembles {sibs} (score {pat['score']}) — "
                         f"{pat['verdict']}  ^d{did}-v{i}")
         sec.append("\n".join(lines))
-    if prod.get("drafts"):
+    if prod.get("error"):
+        # without this branch, a corrupt producer-templates.json (e.g. interrupted mid-
+        # edit) looks IDENTICAL in the report to "nothing in the queue tonight" — both
+        # produce no 'drafts' key, so the whole section used to silently stay empty.
+        sec.append(f"## Producer — error\n- {prod['error']} (queue was NOT modified)")
+    elif prod.get("drafts"):
         lines = [f"## Producer drafts rendered ({len(prod['drafts'])}) -> /producer review"]
         for draft in prod["drafts"]:
             lines.append(f"- {draft['lead_company']} ({draft['playbook']})")
