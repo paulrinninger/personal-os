@@ -14,6 +14,12 @@ involved in rendering.** Since `dream.py` runs as a standalone cron script with 
 can never send anything or create a real Gmail draft — that only ever happens here, in this
 session, after you say yes.
 
+**Deliberately NO risk tiering/automation here** (unlike `/dream review`/`/lessons-gc`, which as
+of 2026-07-04 run trivial actions automatically): every draft touches a REAL external business
+relationship, not just vault content — reversibility alone isn't a sufficient bar here. See the
+project's own lesson about never sending email automatically (born from a real trust incident).
+Every draft stays a mandatory yes/no, no exceptions.
+
 **Display mode** (default, or no argument):
 
 1. `ls -t ~/vault/_inbox/producer-drafts/*.md 2>/dev/null` — show count + lead/playbook for each

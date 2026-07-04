@@ -20,26 +20,54 @@ it is pure suggestion. Kill switch: a file named `dream.off` in the engine's hom
 
 **`review` mode** (`$ARGUMENTS` == `review`):
 
-1. Read the newest dream note's open `- [ ]` checkboxes. Walk them with the user (bundle a few per
-   question), one line each.
-2. **On yes, execute through the EXISTING commands/flows — never invent your own:**
-   - Connection suggestion (`^d…-b…`): add a reciprocal `[[wikilink]]` under `## Links` in BOTH notes.
-     Don't touch anything else in either note.
-   - Merge / cross-link candidate (`^d…-m…`): don't merge yourself — run `/lessons-gc` (it asks Y/N there).
-   - Hot lesson (`^d…-f…`): open the lesson, propose sharpening the rule, only edit after a yes.
-   - Inbox-triage entry (`^d…-t…`): treat exactly like `/harvest review` — promote (dedup first) or
-     mark `status: parked`.
-   - Venture pattern (`^d…-v…`): no file to change — it's a pure observation. Yes = "this pattern
-     was accurate/useful" (the new project really does resemble past failures), no = "false alarm,
-     not actually similar." Either way just log the feedback (step 3) — there's nothing to execute.
-3. Append one line per decision to `~/.claude/personal-os/dream-feedback.jsonl` (path via
-   `PERSONAL_OS_HOME` if set): `{"id":"<block-id>","pass":"connections|gc|fires|triage|ventures","verdict":"accepted|rejected","ts":"<ISO>"}`.
+**Risk tiering (introduced 2026-07-04, after user feedback "why do I have to confirm
+everything"):** not every checkbox deserves the same yes/no bar. Only ask when an action
+changes/removes real content or creates something new the user hasn't seen. Purely additive,
+meaning-preserving, trivially-reversible actions (reciprocal wikilinks) run automatically —
+the user still sees them, just bundled in the final report (step 6), not as an individual
+question. Automatic still means logged (step 3), not untracked.
+
+1. Read the newest dream note's open `- [ ]` checkboxes.
+2. **Treat each checkbox type differently:**
+   - **Connection suggestion (`^d…-b…`) — AUTOMATIC, no question:** add a reciprocal
+     `[[wikilink]]` under `## Links` in BOTH notes (don't touch anything else). Changes no
+     meaning, trivially reversible by removing the link.
+   - **Merge / cross-link candidate (`^d…-m…`):** don't merge yourself — run `/lessons-gc`,
+     which already has its own risk tiering built in (cross-link automatic, merge needs a yes).
+   - **Hot lesson (`^d…-f…`) — needs a yes, but ONE round:** open and read the lesson
+     immediately; if a real sharpening is possible, present the CONCRETE proposal (exact text,
+     exact location) for confirmation directly — don't ask "should I sharpen this?" first and
+     show the actual proposal in a second round, that doubles the back-and-forth for no reason.
+     If honest reading turns up nothing substantial ("already sharp enough"), say so directly
+     rather than forcing a cosmetic edit.
+   - **Inbox-triage entry (`^d…-t…`) — needs a yes, but ONE round, with a CORRECTED target:**
+     read the card itself (not just title/score) and check the suggested embedding target
+     against the actual content — embedding matches are wrong more often for generic PDF
+     reference content than for lessons (verified 2026-07-04: 4 of 10 pointed at the wrong
+     project). If the target doesn't fit, propose the CORRECTED destination in the same
+     question (domain folders under `knowledge/{business,marketing,design,coding,content}/`,
+     or `profile/<name>.md` for bio/skills material about the user themselves — there is no
+     `knowledge/reference` folder, that phrasing is stale). For multiple copies of the same
+     source document (spot near-identical `## Summary` text), promote once and park the rest —
+     don't create the same note multiple times.
+   - **Venture pattern (`^d…-v…`) — needs a yes:** no file to change — it's a pure observation.
+     Yes = "this pattern was accurate/useful", no = "false alarm, not actually similar." Just
+     log the feedback (step 3) — there's nothing to execute.
+3. Append one line per decision (automatic OR yes/no) to `~/.claude/personal-os/dream-feedback.jsonl`
+   (path via `PERSONAL_OS_HOME` if set): `{"id":"<block-id>","pass":"connections|gc|fires|triage|ventures","verdict":"accepted|rejected","ts":"<ISO>"}`.
    This is what makes the next run's thresholds adapt — no ML, just counters. (Without `"ventures"`
    here, feedback on venture patterns would never reach `adaptive_params("ventures")`, which reads
    exactly this file.)
 4. Check off reviewed boxes in the dream note (`- [x]`); once all are handled, set `status: reviewed`
    in its frontmatter.
-5. Report: N accepted / M rejected, which files changed.
+5. **Count-check before reporting (mandatory, not optional):** the number of originally-open
+   `- [ ]` boxes MUST equal the number now checked `- [x]` (compare `grep -c` before/after). A
+   mismatch means an item was silently skipped — go back and handle it, don't just report a
+   smaller number. (2026-07-04: this exact thing happened once — a triage card got skipped
+   mid-review because its filename was easy to confuse with two similar ones; only the count-
+   check after the fact caught it, not the review pass itself.)
+6. Report: N accepted / M rejected (report automatic + yes/no together, counted separately),
+   which files changed.
 
-Never: delete dream notes yourself (let the user clean up old ones), edit a live note without a yes,
-commit anything.
+Never: delete dream notes yourself (let the user clean up old ones), change a live note's
+CONTENT without a yes (adding a reciprocal wikilink is not a content change), commit anything.
