@@ -55,6 +55,7 @@ VENTURES_CURSOR = os.path.join(PO, "ventures-cursor.json")
 VENTURES_EMBEDS = os.path.join(PO, "ventures-embeds.json")
 PRODUCER_QUEUE = os.path.join(PO, "producer-queue.jsonl")
 PRODUCER_TEMPLATES = os.path.join(PO, "producer-templates.json")
+PRODUCER_FEEDBACK_FILE = os.path.join(PO, "producer-feedback.jsonl")
 PRODUCER_DRAFTS_DIR = os.path.join(VAULT, "_inbox", "producer-drafts")
 FIRE_LOG = os.path.join(PO, "lesson-fires.jsonl")
 OS_LESSONS = os.path.join(PO, "os_lessons.py")
@@ -142,8 +143,14 @@ def adaptive_params(pass_name: str) -> dict:
     looser (threshold floor 78 / cap +2)."""
     p = dict(DEFAULTS[pass_name])
     verdicts = []
-    if os.path.exists(FEEDBACK_FILE):
-        for line in open(FEEDBACK_FILE, encoding="utf-8", errors="replace"):
+    # /producer review deliberately writes to its OWN channel (producer-feedback.jsonl,
+    # see claude/commands/producer.md) instead of dream-feedback.jsonl, so accepted/
+    # rejected drafts don't skew the other passes' thresholds. Without this branch,
+    # adaptive_params("producer") would read the wrong (empty) file and your feedback
+    # from /producer review would never have any effect.
+    feedback_file = PRODUCER_FEEDBACK_FILE if pass_name == "producer" else FEEDBACK_FILE
+    if os.path.exists(feedback_file):
+        for line in open(feedback_file, encoding="utf-8", errors="replace"):
             try:
                 r = json.loads(line)
             except Exception:
