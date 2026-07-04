@@ -20,6 +20,13 @@ resumes cleanly instead of redoing finished passes):
                chats (THE ONLY LLM pass: small local model, hard-capped call count)
   triage       ranks your review-inbox drafts against your active project hubs so you
                know which ones to look at first (nomic-embed-text, no LLM)
+  ventures     checks brand-new project hubs against your own past done/parked ventures
+               for a shared "shape" (embeddings + a transitive similarity check to avoid
+               false positives; optional single LLM call to phrase the verdict — a rare,
+               high-signal pass, capped at one pattern per night)
+  producer     renders cold-outreach drafts from a queue you fill in yourself (pure
+               templating, NO LLM — lead pain-points can't be invented) -> real Gmail
+               drafts are only ever created by `/producer review`, never by this script
   report       assembles whichever passes produced something into the dream note
 
 Config (env, all optional):
@@ -44,6 +51,11 @@ WORK_ROOT = os.path.join(PO, "dream-work")
 CURSOR_FILE = os.path.join(PO, "dream-cursor.json")
 FEEDBACK_FILE = os.path.join(PO, "dream-feedback.jsonl")
 EMBED_CACHE = os.path.join(PO, "dream-embeds.json")
+VENTURES_CURSOR = os.path.join(PO, "ventures-cursor.json")
+VENTURES_EMBEDS = os.path.join(PO, "ventures-embeds.json")
+PRODUCER_QUEUE = os.path.join(PO, "producer-queue.jsonl")
+PRODUCER_TEMPLATES = os.path.join(PO, "producer-templates.json")
+PRODUCER_DRAFTS_DIR = os.path.join(VAULT, "_inbox", "producer-drafts")
 FIRE_LOG = os.path.join(PO, "lesson-fires.jsonl")
 OS_LESSONS = os.path.join(PO, "os_lessons.py")
 DREAMS_DIR = os.path.join(VAULT, "_inbox", "dreams")
@@ -68,7 +80,16 @@ DEFAULTS = {
     "connections": {"cap": 8, "threshold": 75, "max_notes": 30},
     "residue":     {"max_docs": 10, "max_bullets": 6, "call_timeout": 120},
     "triage":      {"cap": 10, "max_new_embeds": 120},
+    "ventures":    {"threshold": 78, "min_siblings": 2, "sibling_threshold": 75, "cap": 1},
+    "producer":    {"cap": 5},
 }
+# Calibrate `threshold` against your own vault before relying on it: embed a few known
+# "same shape, different outcome" project pairs (nomic-embed-text via ollama_embed) and
+# see where the true-match band sits vs. an unrelated control pair — cosine scores for
+# German/English business prose can land anywhere in the 70s-80s depending on your writing
+# style. VENTURES_MIN_THRESHOLD below is a hard floor so adaptive_params never drifts it
+# into the noise band even after a run of "accepted" feedback.
+VENTURES_MIN_THRESHOLD = 75
 
 
 def log(*a):
@@ -494,6 +515,232 @@ def cmd_triage(args):
     })
 
 
+# ----------------------------------------------------------------- pass: ventures
+def _hub_meta(path: str) -> dict:
+    """Reads status/created/domain from a project hub's frontmatter (raw scan — these
+    are always single-line scalars in this format, no YAML parser needed)."""
+    try:
+        t = open(path, encoding="utf-8", errors="replace").read(2000)
+    except Exception:
+        return {}
+    meta = {}
+    for key in ("status", "created", "domain"):
+        m = re.search(rf"^{key}:\s*(.+)$", t, re.M)
+        if m:
+            meta[key] = m.group(1).strip().strip('"')
+    return meta
+
+
+def _stand_first_line(path: str) -> str:
+    """First non-empty line under a '## Status' (or '## Stand') heading — hubs following
+    the vault-scaffold template usually write '<status> — <short reason>' there."""
+    try:
+        t = open(path, encoding="utf-8", errors="replace").read(4000)
+    except Exception:
+        return ""
+    m = re.search(r"^## (?:Status|Stand)\s*\n+(.+)$", t, re.M)
+    return m.group(1).strip()[:220] if m else ""
+
+
+def _ventures_embed_of(cache: dict, path: str, mtime: float) -> list[float] | None:
+    ent = cache.get(path)
+    if ent and ent.get("mtime") == mtime:
+        return ent["vec"]
+    title, body = read_note(path, 600)  # just the opening "what this is" paragraph
+    try:
+        vec = ollama_embed(title + " " + body)
+    except Exception:
+        return None
+    cache[path] = {"mtime": mtime, "vec": vec}
+    return vec
+
+
+def cmd_ventures(args):
+    if pass_done(args, "ventures"):
+        return log("[ventures] already done (resume) — skip")
+    p = adaptive_params("ventures")
+    threshold = max(p.get("threshold", 78), VENTURES_MIN_THRESHOLD)
+    min_sib = p.get("min_siblings", 2)
+    sib_threshold = p.get("sibling_threshold", 75)
+
+    cursor = {}
+    try:
+        cursor = json.load(open(VENTURES_CURSOR))
+    except Exception:
+        pass
+    now = dt.datetime.now()
+    hubs = sorted(glob.glob(os.path.join(VAULT, "projects", "*.md")))
+    if not hubs:
+        return write_pass(args, "ventures", {"skipped": "no project hubs"})
+
+    candidates = []  # (path, mtime, meta) — new/changed AND young enough to be "a new project"
+    for path in hubs:
+        try:
+            mt = os.path.getmtime(path)
+        except OSError:
+            continue
+        if cursor.get(path) == mt:
+            continue  # unchanged since last check
+        meta = _hub_meta(path)
+        try:
+            age_days = (now - dt.datetime.fromisoformat(meta.get("created", "1970-01-01"))).days
+        except Exception:
+            age_days = 9999
+        if age_days <= 21:
+            candidates.append((path, mt, meta))
+
+    if not candidates:
+        return write_pass(args, "ventures", {"skipped": "no new hub in the 21-day window"})
+    if not ollama_up():
+        return write_pass(args, "ventures", {"skipped": "ollama not reachable"})
+
+    cache = {}
+    try:
+        cache = json.load(open(VENTURES_EMBEDS))
+    except Exception:
+        pass
+
+    # Comparison pool: done/parked hubs only — never active. An active project shouldn't
+    # see itself as one of its own "dead siblings".
+    siblings_pool = []
+    for path in hubs:
+        meta = _hub_meta(path)
+        if meta.get("status") not in ("done", "parked"):
+            continue
+        try:
+            mt = os.path.getmtime(path)
+        except OSError:
+            continue
+        vec = _ventures_embed_of(cache, path, mt)
+        if vec:
+            siblings_pool.append({"path": path, "vec": vec})
+
+    patterns = []
+    for path, mt, meta in candidates:
+        vec = _ventures_embed_of(cache, path, mt)
+        if not vec:
+            continue
+        scored = sorted(
+            ((cosine(vec, s["vec"]), s) for s in siblings_pool if s["path"] != path),
+            key=lambda x: -x[0])
+        matches = [(score, s) for score, s in scored if score * 100 >= threshold]
+        if len(matches) < min_sib:
+            continue
+        # Transitive brake: among the top matches, require a group that's also similar
+        # to EACH OTHER (not just to the candidate) — stops two projects that happen to
+        # both land near the candidate, but have nothing to do with each other, from
+        # being reported as "a pattern".
+        cluster = [matches[0]]
+        for score, s in matches[1:]:
+            if all(cosine(s["vec"], m[1]["vec"]) * 100 >= sib_threshold for m in cluster):
+                cluster.append((score, s))
+            if len(cluster) >= min_sib:
+                break
+        if len(cluster) < min_sib:
+            continue
+        sib_paths = [s["path"] for _, s in cluster]
+        stand_lines = [f"[[{os.path.basename(sp)[:-3]}]]: {_stand_first_line(sp)}" for sp in sib_paths]
+        verdict = " / ".join(_stand_first_line(sp) for sp in sib_paths if _stand_first_line(sp))
+        if ollama_up():
+            try:
+                verdict = ollama_generate(
+                    "These past projects seem to share a shape with a new project. Condense "
+                    "into EXACTLY one short sentence (max 25 words) what they had in common "
+                    "and why they didn't work out — ONLY from the material given, don't invent "
+                    "or speculate. Just the one sentence, no preamble.\n\n"
+                    + "\n".join(stand_lines),
+                    timeout=60).strip() or verdict
+            except Exception as e:
+                log(f"[ventures] WARN: synthesis failed, using raw text: {e}")
+        patterns.append({
+            "new_hub": os.path.basename(path)[:-3],
+            "siblings": [os.path.basename(sp)[:-3] for sp in sib_paths],
+            "score": round(cluster[0][0] * 100, 1),
+            "verdict": (verdict if len(verdict) <= 300 else verdict[:300].rsplit(" ", 1)[0] + "…"),
+        })
+        if len(patterns) >= p.get("cap", 1):
+            break
+
+    for path, mt, _ in candidates:  # advance cursor only after processing ALL candidates
+        cursor[path] = mt
+    tmp = VENTURES_CURSOR + ".tmp"
+    json.dump(cursor, open(tmp, "w"))
+    os.replace(tmp, VENTURES_CURSOR)
+    tmp = VENTURES_EMBEDS + ".tmp"
+    json.dump(cache, open(tmp, "w"))
+    os.replace(tmp, VENTURES_EMBEDS)
+
+    write_pass(args, "ventures", {"params": p, "candidates_checked": len(candidates), "patterns": patterns})
+
+
+# ----------------------------------------------------------------- pass: producer
+def cmd_producer(args):
+    if pass_done(args, "producer"):
+        return log("[producer] already done (resume) — skip")
+    p = adaptive_params("producer")
+    if not os.path.exists(PRODUCER_QUEUE):
+        return write_pass(args, "producer", {"skipped": "no queue file (producer-queue.jsonl missing)"})
+    try:
+        templates = json.load(open(PRODUCER_TEMPLATES))
+    except Exception as e:
+        return write_pass(args, "producer", {"error": f"producer-templates.json unreadable: {e}"})
+
+    entries = []
+    with open(PRODUCER_QUEUE, encoding="utf-8") as f:
+        for line in f:
+            if line.strip():
+                try:
+                    entries.append(json.loads(line))
+                except Exception:
+                    continue
+
+    def complete(e):
+        lead = e.get("lead", {})
+        # These two fields MUST come from you — a model has no basis to invent a real
+        # lead's pain point, and doing so is exactly the failure mode this pass exists
+        # to avoid. Missing either -> skipped, never silently generated.
+        return bool(lead.get("observation")) and bool(lead.get("pain_point"))
+
+    incomplete = [e for e in entries if not complete(e)]
+    valid = [e for e in entries if complete(e)][:p["cap"]]
+
+    os.makedirs(PRODUCER_DRAFTS_DIR, exist_ok=True)
+    drafts = []
+    for e in valid:
+        tmpl = templates.get(e.get("playbook", ""))
+        if not tmpl:
+            incomplete.append(e)
+            continue
+        lead = e["lead"]
+        try:
+            # Pure templating — NO ollama_generate. An LLM call here would only add
+            # hallucination risk with no upside over the playbook sentences you already
+            # wrote; observation/pain_point come verbatim from you.
+            text = tmpl.format(**{**lead, "cta": e.get("cta", "")})
+        except KeyError as ex:
+            log(f"[producer] WARN: missing template variable for {e.get('id')}: {ex}")
+            incomplete.append(e)
+            continue
+        fname = f"{today(args)}-{e.get('id', 'x')[:8]}.md"
+        note = os.path.join(PRODUCER_DRAFTS_DIR, fname)
+        with open(note, "w", encoding="utf-8") as f:
+            f.write("\n".join([
+                "---", f"title: Producer draft — {lead.get('company', '?')}",
+                "tags: [producer, draft]", f"created: {today(args)}", "status: draft",
+                "type: producer-draft", f"playbook: {e.get('playbook')}",
+                f"lead_company: {lead.get('company', '?')}", "---", "",
+                "> DRAFT ONLY — nothing has been sent. Review with: /producer review", "",
+                text, "",
+            ]))
+        drafts.append({"id": e.get("id"), "lead_company": lead.get("company", "?"),
+                       "playbook": e.get("playbook"), "file": note})
+
+    write_pass(args, "producer", {
+        "params": p, "drafts": drafts, "incomplete": len(incomplete),
+        "queue_remaining": len(entries) - len(valid),
+    })
+
+
 # ---------------------------------------------------------------------- report writer
 def _load(args, name):
     try:
@@ -507,6 +754,7 @@ def cmd_report(args):
     did = d.replace("-", "")
     fires, gc = _load(args, "fires"), _load(args, "gc")
     conn, res, tri = _load(args, "connections"), _load(args, "residue"), _load(args, "triage")
+    ven, prod = _load(args, "ventures"), _load(args, "producer")
     sec = []
 
     if res.get("synthesis"):
@@ -557,12 +805,27 @@ def cmd_report(args):
         if tri.get("embeds_deferred"):
             lines.append(f"- ({tri['embeds_deferred']} drafts not yet embedded — future nights)")
         sec.append("\n".join(lines))
+    if ven.get("patterns"):
+        lines = ["## Venture patterns detected — read before you start"]
+        for i, pat in enumerate(ven["patterns"], 1):
+            sibs = " / ".join(f"[[{s}]]" for s in pat["siblings"])
+            lines.append(f"- [ ] [[{pat['new_hub']}]] resembles {sibs} (score {pat['score']}) — "
+                        f"{pat['verdict']}  ^d{did}-v{i}")
+        sec.append("\n".join(lines))
+    if prod.get("drafts"):
+        lines = [f"## Producer drafts rendered ({len(prod['drafts'])}) -> /producer review"]
+        for draft in prod["drafts"]:
+            lines.append(f"- {draft['lead_company']} ({draft['playbook']})")
+        if prod.get("incomplete"):
+            lines.append(f"- ({prod['incomplete']} queue entries incomplete — observation/pain_point missing)")
+        sec.append("\n".join(lines))
 
     if not sec:
         log("[report] a dreamless night — no note written")
         return
     passes = [nm for nm, dd in (("residue", res), ("connections", conn), ("fires", fires),
-                                ("gc", gc), ("triage", tri)) if dd and not dd.get("skipped")]
+                                ("gc", gc), ("triage", tri), ("ventures", ven), ("producer", prod))
+              if dd and not dd.get("skipped")]
     llm_calls = res.get("llm_calls", 0)
     os.makedirs(DREAMS_DIR, exist_ok=True)
     note = os.path.join(DREAMS_DIR, f"{d}-dream.md")
@@ -595,13 +858,14 @@ def cmd_report(args):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("cmd", choices=["fires", "gc-digest", "connections", "residue",
-                                    "triage", "report"])
+                                    "triage", "ventures", "producer", "report"])
     ap.add_argument("--date", help="YYYY-MM-DD override (testing)")
     ap.add_argument("--force", action="store_true", help="recompute a pass even if resume-cached")
     args = ap.parse_args()
     os.makedirs(PO, exist_ok=True)
     {"fires": cmd_fires, "gc-digest": cmd_gc_digest, "connections": cmd_connections,
-     "residue": cmd_residue, "triage": cmd_triage, "report": cmd_report}[args.cmd](args)
+     "residue": cmd_residue, "triage": cmd_triage, "ventures": cmd_ventures,
+     "producer": cmd_producer, "report": cmd_report}[args.cmd](args)
     return 0
 
 

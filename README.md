@@ -150,6 +150,7 @@ Two things stay opt-in even with `install.sh`: pass `--schedule` for the nightly
 | `/lessons-gc` | Prune cold, stale, and duplicate lessons to keep the store sharp |
 | `/harvest` | Distill lessons & ideas from sessions that ended without `/save`, into a review inbox |
 | `/dream` | Show (or `review`) the optional nightly "dreaming" note — suggestions only, never auto-applied |
+| `/producer` | Show (or `review`) pending cold-outreach text drafts — real Gmail drafts only after a yes |
 
 ---
 
@@ -178,7 +179,7 @@ The repo ships **data-free**: just the framework plus a handful of generic examp
 
 **What if I skip graphify / ollama?** Both are optional. Without graphify you lose structural (graph) recall but keep full semantic recall. Without ollama you lose the dedup pass in `/lessons-gc` and the optional nightly dreaming pass. qmd is the one required dependency.
 
-**What's "dreaming"?** An optional third nightly job (`--schedule-dream`) that runs a small local model over the day's changes — condensing yesterday, suggesting `[[wikilinks]]` between notes that never reference each other, flagging lesson merge candidates, ranking your review inbox. It writes one suggestions-only note per night to `_inbox/dreams/` and never touches a live note; you review it with `/dream review`. Most of its passes are pure embeddings/graph work with no LLM at all — see `docs/COMMANDS.md` §3c.
+**What's "dreaming"?** An optional third nightly job (`--schedule-dream`) that runs a small local model over the day's changes — condensing yesterday, suggesting `[[wikilinks]]` between notes that never reference each other, flagging lesson merge candidates, ranking your review inbox, spotting when a brand-new project shares a shape with past ventures that didn't work out, and (if you feed it a lead queue yourself) rendering cold-outreach drafts from your own playbooks. It writes one suggestions-only note per night to `_inbox/dreams/` and never touches a live note or sends anything; you review with `/dream review` and `/producer review`. Most of its passes are pure embeddings/graph work with no LLM at all — see `docs/COMMANDS.md` §3c.
 
 **Can I import my ChatGPT history?** Yes — `scripts/chatgpt_to_obsidian.py --zip <export.zip>` converts a ChatGPT data export into the same vault (`chats/gpt/`), incrementally, so `/mine-chats` can distill it. It's a manual one-off, not part of the nightly scheduler; see `docs/SETUP.md`.
 

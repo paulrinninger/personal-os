@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Two new dreaming passes: `ventures` and `producer`** (`scripts/dream.py`, `scripts/dream_run.sh`,
+  `/producer` command). `ventures` checks brand-new project hubs against your own past `done`/`parked`
+  projects for a shared "shape", using embeddings plus a transitive similarity check (candidate siblings
+  must also resemble *each other*, not just the new project) to keep false positives out — capped at
+  one pattern a night, with an optional single LLM call only to phrase the verdict. `producer` renders
+  cold-outreach drafts from a `producer-queue.jsonl` you fill in yourself (required fields
+  `observation`/`pain_point` — never invented) against `producer-templates.json`, pure `str.format()`,
+  no LLM call. Since `dream.py` runs as a cron script with no MCP access, real Gmail drafts are only
+  ever created by the new `/producer review` command, mirroring the existing `/dream review` /
+  `/harvest review` draft-then-approve pattern. Example configs: `config/producer-*.example.*`.
 - **Nightly "dreaming" pass** (`scripts/dream.py` + `scripts/dream_run.sh`, `/dream` command,
   `install.py --schedule-dream`): an optional third nightly job that consolidates the vault while
   you sleep — condenses yesterday's residue, proposes `[[wikilinks]]` between notes that never

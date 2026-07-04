@@ -2,10 +2,10 @@
 
 > **DE zuerst, dann EN.** Each section has a German half and an English half.
 
-Vollständige Referenz: die 9 Slash-Commands, die 2 Hooks und die Engines `os_lessons.py` /
+Vollständige Referenz: die 10 Slash-Commands, die 2 Hooks und die Engines `os_lessons.py` /
 `os_doctor.py` (+ optional `dream.py`) — was jedes tut, wann es läuft, was es liest/schreibt.
 
-Complete reference: the 9 slash commands, the 2 hooks, and the engines (`os_lessons.py`,
+Complete reference: the 10 slash commands, the 2 hooks, and the engines (`os_lessons.py`,
 `os_doctor.py`, + optional `dream.py`) — what each does, when it runs, what it reads/writes.
 
 ---
@@ -27,6 +27,7 @@ Installiert nach / installed to: `~/.claude/commands/`
 | `/lessons-gc` | Räumt kalte/veraltete/doppelte Lessons aus. **Löscht nie ohne Rückfrage.** | Zur Pflege, gelegentlich. | Liest `lessons/`; optional ollama-Embeddings für Near-Dubletten. |
 | `/harvest` | Verarbeitet die Auto-Harvest-Queue: destilliert Lessons/Ideen aus Sessions, die **ohne `/save`** endeten, in die Review-Inbox `_inbox/`. | Wenn die Queue gefüllt ist (`/os doctor` zeigt's). | Liest Queue + Transkripte; schreibt Drafts nach `_inbox/`. |
 | `/dream` | Zeigt die nächtliche Dream-Notiz (falls `dream_run.sh` geplant ist); `/dream review` geht ihre Checkboxen durch und führt Zusagen über die bestehenden Commands aus. | Optional, wenn Dreaming aktiviert ist. | Liest `_inbox/dreams/`; `review` schreibt Wikilinks/Feedback. |
+| `/producer` | Zeigt wartende Cold-Outreach-Textentwürfe (aus dem `producer`-Pass); `/producer review` legt nach Y/N ECHTE Gmail-Drafts an — nie automatisch. | Optional, wenn du `producer-queue.jsonl` selbst befüllst. | Liest `_inbox/producer-drafts/`; `review` legt Gmail-Drafts an + schreibt Feedback. |
 
 ### EN
 
@@ -41,6 +42,7 @@ Installiert nach / installed to: `~/.claude/commands/`
 | `/lessons-gc` | Prunes cold/stale/duplicate lessons. **Never deletes without asking.** | For maintenance, occasionally. | Reads `lessons/`; optional ollama embeddings for near-duplicates. |
 | `/harvest` | Processes the auto-harvest queue: distills lessons/ideas from sessions that ended **without `/save`** into the review inbox `_inbox/`. | When the queue has items (`/os doctor` shows it). | Reads the queue + transcripts; writes drafts to `_inbox/`. |
 | `/dream` | Shows the nightly dream note (if `dream_run.sh` is scheduled); `/dream review` walks its checkboxes and executes accepted ones via the existing commands. | Optional, when dreaming is enabled. | Reads `_inbox/dreams/`; `review` writes wikilinks/feedback. |
+| `/producer` | Shows pending cold-outreach text drafts (from the `producer` pass); `/producer review` creates REAL Gmail drafts after a yes/no — never automatically. | Optional, once you populate `producer-queue.jsonl` yourself. | Reads `_inbox/producer-drafts/`; `review` creates Gmail drafts + writes feedback. |
 
 ---
 
@@ -127,21 +129,52 @@ smoke test).
 ### DE
 
 Optionaler dritter Nightly-Job (Ollama vorausgesetzt), registrierbar via `install.py
---schedule-dream`. Läuft 30 Minuten nach dem Graph-Rebuild und arbeitet fünf Pässe ab
+--schedule-dream`. Läuft 30 Minuten nach dem Graph-Rebuild und arbeitet sieben Pässe ab
 (Feuer-Muster, Lesson-Konsolidierung, implizite Verbindungen, Tagesrest-Digest, Inbox-
-Triage) — alle bis auf den Tagesrest-Pass sind reine Embedding-/Python-Pässe ohne LLM.
-Schreibt **ausschließlich** eine Vorschlags-Notiz nach `_inbox/dreams/`, ändert nie
-selbst eine Notiz. Aus/An: Datei `dream.off` im Engine-Home-Verzeichnis. Review via
-**`/dream review`**.
+Triage, Venture-Muster, Producer) — alle außer Tagesrest sind reine Embedding-/Python-
+Pässe ohne Pflicht-LLM. Schreibt **ausschließlich** eine Vorschlags-Notiz nach
+`_inbox/dreams/`, ändert nie selbst eine Notiz. Aus/An: Datei `dream.off` im
+Engine-Home-Verzeichnis. Review via **`/dream review`**.
+
+**Venture-Muster** (`ventures`): sobald ein neuer Projekt-Hub auftaucht (jung genug,
+21-Tage-Fenster), wird er gegen deine eigenen `done`/`parked`-Projekte auf Ähnlichkeit
+geprüft — mit einem transitiven Check (die "toten Geschwister" müssen sich auch
+UNTEREINANDER ähneln), damit zwei zufällig nahe, aber unabhängige Projekte nicht als
+"Muster" gelten. **Kalibriere den Threshold an deinem eigenen Vault** — Cosine-Werte für
+Business-Prosa variieren mit deinem Schreibstil; siehe Kommentar bei `VENTURES_MIN_THRESHOLD`
+in `dream.py`.
+
+**Producer** (`producer`): rendert reinen Template-Text aus einer von dir befüllten
+`producer-queue.jsonl` (Pflichtfelder `observation`/`pain_point` — MÜSSEN von dir kommen,
+niemals vom Pass erfunden) nach `_inbox/producer-drafts/`. **Kein LLM-Call** — nur
+`str.format()` gegen `producer-templates.json` (Beispiele: `config/producer-*.example.*`).
+Da `dream.py` als Cron-Skript ohne MCP-Zugriff läuft, entstehen echte Gmail-Entwürfe
+ausschließlich über **`/producer review`**.
 
 ### EN
 
 Optional third nightly job (requires Ollama), registered via `install.py
---schedule-dream`. Runs 30 minutes after the graph rebuild and works through five
+--schedule-dream`. Runs 30 minutes after the graph rebuild and works through seven
 passes (firing patterns, lesson consolidation, implicit connections, day-residue
-digest, inbox triage) — all but the residue pass are embeddings/Python only, no LLM.
-Writes **only** a suggestions note to `_inbox/dreams/`; never edits a note itself.
-On/off: a `dream.off` file in the engine's home dir. Review via **`/dream review`**.
+digest, inbox triage, venture patterns, producer) — all but residue are embeddings/Python
+only, no mandatory LLM. Writes **only** a suggestions note to `_inbox/dreams/`; never
+edits a note itself. On/off: a `dream.off` file in the engine's home dir. Review via
+**`/dream review`**.
+
+**Venture patterns** (`ventures`): whenever a new project hub appears (young enough,
+21-day window), it's checked for similarity against your own `done`/`parked` projects —
+with a transitive check (the "dead siblings" must also resemble EACH OTHER), so two
+projects that happen to land near the candidate but have nothing to do with each other
+don't get reported as "a pattern". **Calibrate the threshold against your own vault** —
+cosine scores for business prose vary with your writing style; see the comment next to
+`VENTURES_MIN_THRESHOLD` in `dream.py`.
+
+**Producer** (`producer`): renders pure template text from a `producer-queue.jsonl` you
+fill in yourself (required fields `observation`/`pain_point` — MUST come from you, never
+invented by the pass) into `_inbox/producer-drafts/`. **No LLM call** — just
+`str.format()` against `producer-templates.json` (examples: `config/producer-*.example.*`).
+Since `dream.py` runs as a cron script with no MCP access, real Gmail drafts are only
+ever created via **`/producer review`**.
 
 ---
 

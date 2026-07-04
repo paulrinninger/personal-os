@@ -1,0 +1,5 @@
+{
+  "_comment": "Copy to ~/.personal-os/producer-templates.json and adapt to your own playbooks. Variables come from each queue entry's `lead` object (see config/producer-queue.example.jsonl) plus `cta`. Keep them as plain str.format() templates — the producer pass never calls an LLM, so every variable must already be in the queue entry.",
+  "cold-outreach-observation": "Hi {name},\n\n{observation}\n\n{pain_point}\n\n{cta}\n\nBest,\n{sender_name}",
+  "cold-outreach-mockup": "Hi {name},\n\n{observation}\n\n{pain_point}\n\nI put together a quick preview for {company}: {mockup_url}\n\n{cta}\n\nBest,\n{sender_name}"
+}

@@ -102,7 +102,7 @@ def main():
     for f in ("hooks/recall-lessons.py", "hooks/risk-recall.py",
               "personal-os/os_lessons.py", "personal-os/os_doctor.py"):
         check(f"~/.claude/{f}", os.path.isfile(os.path.join(cd, f)))
-    for cmd in ("save", "lesson", "idea", "os", "resume", "mine-chats", "lessons-gc", "harvest", "dream"):
+    for cmd in ("save", "lesson", "idea", "os", "resume", "mine-chats", "lessons-gc", "harvest", "dream", "producer"):
         p = os.path.join(cd, "commands", cmd + ".md")
         check(f"/{cmd}", os.path.isfile(p))
 

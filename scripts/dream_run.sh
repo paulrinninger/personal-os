@@ -101,11 +101,14 @@ fi
 [ "$OLLAMA_OK" = 0 ] && SKIP_LLM=1
 
 run "fires"       60  $DREAM fires
-if [ -z "${SKIP_LLM:-}" ]; then
-  run "gc-digest" 300  $DREAM gc-digest
-fi
+# producer: pure templating, no ollama call in the core pass -> always runs, even SKIP_LLM
+run "producer"    120 $DREAM producer
 run "connections" 600 $DREAM connections
 if [ -z "${SKIP_LLM:-}" ]; then
+  run "gc-digest" 300  $DREAM gc-digest
+  # ventures uses nomic-embed (like triage) -> skipped under RAM pressure/collision too,
+  # not just on a real ollama outage (cmd_ventures itself checks ollama_up() as well)
+  run "ventures"  180  $DREAM ventures
   run "triage"    600  $DREAM triage
   run "residue"   900  $DREAM residue
 fi
