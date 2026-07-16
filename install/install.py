@@ -8,9 +8,10 @@ What it does (and prints the full plan BEFORE touching anything):
   4. deep-merge our hooks + env + permissions into ~/.claude/settings.json (backs up first)
   5. append the Personal OS section to ~/.claude/CLAUDE.md between sentinels (idempotent)
   6. write ~/.config/qmd/index.yml pointing at your vault, then build the first index
-  7. optionally register a nightly graph rebuild
-  8. optionally register the nightly "dreaming" pass — local-LLM consolidation that
-     writes suggestions only (needs Ollama; separate opt-in from the graph rebuild)
+  7. optionally register a nightly graph rebuild (--schedule) and/or the nightly
+     dreaming pass (--schedule-dream), and an opt-in vault autopush Stop hook (--autopush)
+  8. write an install manifest (<state home>/install-manifest.json) so --check-drift
+     can tell "locally customized" apart from "update available" later
 
 Never sets an API key. Re-runnable (idempotent). See uninstall.py to reverse.
 
@@ -21,9 +22,12 @@ Usage:
   python3 install/install.py --vault-path ~/notes --lang de --no-examples
   python3 install/install.py --link          # symlink scripts/hooks instead of copy (dev)
   python3 install/install.py --schedule      # also register the nightly graph rebuild
-  python3 install/install.py --schedule-dream  # also register the nightly dreaming pass
+  python3 install/install.py --schedule-dream  # also register the nightly dreaming pass (04:45)
+  python3 install/install.py --autopush      # opt-in: commit+push the vault on session end
+  python3 install/install.py --check-drift   # compare installed files vs manifest vs repo
 """
 import argparse
+import hashlib
 import json
 import os
 import platform
@@ -37,9 +41,12 @@ HOME = os.path.expanduser("~")
 
 # Sentinels that identify OUR hook groups, so re-runs replace rather than duplicate.
 HOOK_SENTINELS = (
-    "recall-lessons.py", "risk-recall.py", "save_nudge.sh", "vault_autopush.sh",
+    "recall-lessons.py", "risk-recall.py", "save_nudge.sh", "health-sentinel.py",
+    "vault_autopush.sh", "dream_run.sh",
     "checkpoint session log", "graphify: knowledge graph at graphify-out",
 )
+HOOK_FILES = ("recall-lessons.py", "risk-recall.py", "health-sentinel.py")
+ENGINE_FILES = ("os_lessons.py", "os_doctor.py", "README.md")
 CLAUDE_MD_START = "<!-- personal-os:start -->"
 CLAUDE_MD_END = "<!-- personal-os:end -->"
 
@@ -74,9 +81,10 @@ def load_config(args):
         "lang": "en",
         "install_examples": True,
         "schedule_nightly_graph": False,
-        "import_chats_nightly": False,
         "schedule_nightly_dream": False,
+        "autopush_on_stop": False,
         "dream_gen_model": "llama3.2:3b",
+        "import_chats_nightly": False,
         "auto_install_deps": False,
     }
     if args.config:
@@ -93,6 +101,8 @@ def load_config(args):
         cfg["schedule_nightly_graph"] = True
     if args.schedule_dream:
         cfg["schedule_nightly_dream"] = True
+    if args.autopush:
+        cfg["autopush_on_stop"] = True
 
     cfg["vault_dir"] = expand(cfg["vault_dir"])
     cfg["claude_dir"] = expand(cfg["claude_dir"])
@@ -130,6 +140,7 @@ def render_tokens(text, cfg):
         "PERSONAL_OS_LOG_DIR": cfg["log_dir"],
         "PERSONAL_OS_HOME": cfg["personal_os_home"],
         "PERSONAL_OS_OLLAMA": cfg["ollama_endpoint"],
+        "PERSONAL_OS_DREAM_MODEL": cfg["dream_gen_model"],
         "PERSONAL_OS_LANG": cfg["lang"],
     }
     for k, v in tokens.items():
@@ -198,12 +209,12 @@ def setup_claude_assets(cfg, link, dry, backup_dir):
         _place(os.path.join(REPO, "claude", "commands", fn),
                os.path.join(cd, "commands", fn), link, os.path.join(backup_dir, "commands"))
     # hooks
-    for fn in ("recall-lessons.py", "risk-recall.py"):
+    for fn in HOOK_FILES:
         d = os.path.join(cd, "hooks", fn)
         _place(os.path.join(REPO, "claude", "hooks", fn), d, link, os.path.join(backup_dir, "hooks"))
         os.chmod(d, 0o755)
     # engine
-    for fn in ("os_lessons.py", "os_doctor.py", "README.md"):
+    for fn in ENGINE_FILES:
         _place(os.path.join(REPO, "claude", "personal-os", fn),
                os.path.join(cfg["personal_os_home"], fn), link,
                os.path.join(backup_dir, "personal-os"))
@@ -277,9 +288,28 @@ def deep_merge_settings(cfg, dry, backup_dir):
         cur[:] = [g for g in cur if not _is_ours(g)]
         cur.extend(groups)
 
+    # Vault autopush is OPT-IN, so it is appended programmatically here rather than
+    # shipped in the unconditionally-merged settings.fragment.json. The sentinel
+    # ("vault_autopush.sh") makes re-runs idempotent either way: a previous autopush
+    # group was already dropped above, and it is only re-added if still opted in.
+    if cfg.get("autopush_on_stop"):
+        stop = hooks.setdefault("Stop", [])
+        # any stale autopush group not covered by the fragment purge (e.g. Stop absent
+        # from the fragment in a future version) is dropped defensively
+        stop[:] = [g for g in stop if "vault_autopush.sh" not in json.dumps(g)]
+        stop.append({
+            "hooks": [{
+                "type": "command",
+                "command": '/bin/sh "{}/vault_autopush.sh" 2>/dev/null || true'.format(
+                    cfg["scripts_dir"]),
+                "timeout": 30,
+            }]
+        })
+
     os.makedirs(cd, exist_ok=True)
     json.dump(existing, open(settings_path, "w"), indent=2, ensure_ascii=False)
-    ok("settings.json merged (previous backed up)")
+    ok("settings.json merged (previous backed up)"
+       + (" + autopush Stop hook" if cfg.get("autopush_on_stop") else ""))
 
 
 def _is_ours(group):
@@ -349,96 +379,175 @@ def setup_qmd(cfg, tools, dry, no_embed):
 
 # ---------------------------------------------------------------- scheduler
 
+def _base_job_env(cfg):
+    return {
+        "PERSONAL_OS_VAULT": cfg["vault_dir"],
+        "PERSONAL_OS_SCRIPTS_DIR": cfg["scripts_dir"],
+        "PERSONAL_OS_LOG_DIR": cfg["log_dir"],
+        "PERSONAL_OS_HOME": cfg["personal_os_home"],
+    }
+
+
+def _schedule_job(label, script, hour, minute, env, background=False):
+    """Register one nightly job: launchd plist on macOS, crontab hint on Linux."""
+    system = platform.system()
+    if system == "Darwin":
+        plist = os.path.join(HOME, "Library", "LaunchAgents", label + ".plist")
+        os.makedirs(os.path.dirname(plist), exist_ok=True)
+        env_xml = "\n".join(f"    <key>{k}</key><string>{v}</string>" for k, v in env.items())
+        extra = ""
+        if background:
+            # Low-priority QoS: this job may run a local LLM — it must never compete
+            # with foreground work if the machine happens to be awake.
+            extra = ("  <key>ProcessType</key><string>Background</string>\n"
+                     "  <key>Nice</key><integer>10</integer>\n"
+                     "  <key>LowPriorityIO</key><true/>\n")
+        open(plist, "w").write(f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>{label}</string>
+  <key>ProgramArguments</key><array><string>/bin/sh</string><string>{script}</string></array>
+  <key>EnvironmentVariables</key><dict>
+{env_xml}
+  </dict>
+{extra}  <key>StartCalendarInterval</key><dict><key>Hour</key><integer>{hour}</integer><key>Minute</key><integer>{minute}</integer></dict>
+</dict></plist>
+""")
+        subprocess.run(["launchctl", "unload", plist], capture_output=True)
+        subprocess.run(["launchctl", "load", plist], capture_output=True)
+        ok(f"launchd job loaded ({label}, {hour:02d}:{minute:02d})")
+    else:
+        env_str = " ".join(f"{k}={v}" for k, v in env.items())
+        line = f"{minute} {hour} * * * {env_str} /bin/sh {script}"
+        warn("Linux: add this to your crontab (`crontab -e`) or a systemd user timer:")
+        print("   " + line)
+
+
 def setup_scheduler(cfg, tools, dry):
-    if not cfg["schedule_nightly_graph"]:
-        return
-    if not tools["graphify"]:
-        warn("graphify not installed — skipping nightly graph schedule")
-        return
-    rebuild = os.path.join(cfg["scripts_dir"], "graph_rebuild.sh")
-    system = platform.system()
-    info(f"nightly graph rebuild ({system})")
-    if dry:
-        return
-    if system == "Darwin":
-        label = "com.personal-os.graph-rebuild"
-        plist = os.path.join(HOME, "Library", "LaunchAgents", label + ".plist")
-        os.makedirs(os.path.dirname(plist), exist_ok=True)
-        open(plist, "w").write(f"""<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-  <key>Label</key><string>{label}</string>
-  <key>ProgramArguments</key><array><string>/bin/sh</string><string>{rebuild}</string></array>
-  <key>EnvironmentVariables</key><dict>
-    <key>PERSONAL_OS_VAULT</key><string>{cfg['vault_dir']}</string>
-    <key>PERSONAL_OS_SCRIPTS_DIR</key><string>{cfg['scripts_dir']}</string>
-    <key>PERSONAL_OS_LOG_DIR</key><string>{cfg['log_dir']}</string>
-    <key>PERSONAL_OS_IMPORT_CHATS</key><string>{'1' if cfg['import_chats_nightly'] else '0'}</string>
-  </dict>
-  <key>StartCalendarInterval</key><dict><key>Hour</key><integer>4</integer><key>Minute</key><integer>15</integer></dict>
-</dict></plist>
-""")
-        subprocess.run(["launchctl", "unload", plist], capture_output=True)
-        subprocess.run(["launchctl", "load", plist], capture_output=True)
-        ok(f"launchd job loaded ({label})")
-    else:
-        line = f"15 4 * * * PERSONAL_OS_VAULT={cfg['vault_dir']} " \
-               f"PERSONAL_OS_SCRIPTS_DIR={cfg['scripts_dir']} " \
-               f"PERSONAL_OS_IMPORT_CHATS={'1' if cfg['import_chats_nightly'] else '0'} /bin/sh {rebuild}"
-        warn("Linux: add this to your crontab (`crontab -e`) or a systemd user timer:")
-        print("   " + line)
+    if cfg["schedule_nightly_graph"]:
+        if not tools["graphify"]:
+            warn("graphify not installed — skipping nightly graph schedule")
+        else:
+            info(f"nightly graph rebuild ({platform.system()})")
+            if not dry:
+                env = _base_job_env(cfg)
+                env["PERSONAL_OS_IMPORT_CHATS"] = "1" if cfg["import_chats_nightly"] else "0"
+                _schedule_job("com.personal-os.graph-rebuild",
+                              os.path.join(cfg["scripts_dir"], "graph_rebuild.sh"),
+                              4, 15, env)
+    if cfg["schedule_nightly_dream"]:
+        if not tools["ollama"]:
+            # Dreaming degrades gracefully: the LLM-free passes (fires, connections)
+            # still run without ollama, so schedule anyway and just say so.
+            warn("ollama not installed — dreaming will run its LLM-free passes only "
+                 "(install ollama + pull the models to enable the full run)")
+        info(f"nightly dreaming pass ({platform.system()})")
+        if not dry:
+            env = _base_job_env(cfg)
+            env["PERSONAL_OS_OLLAMA"] = cfg["ollama_endpoint"]
+            env["PERSONAL_OS_DREAM_MODEL"] = cfg["dream_gen_model"]
+            env["PERSONAL_OS_EMBED_MODEL"] = cfg["embed_model"]
+            _schedule_job("com.personal-os.dream",
+                          os.path.join(cfg["scripts_dir"], "dream_run.sh"),
+                          4, 45, env, background=True)
 
 
-def setup_dream_scheduler(cfg, tools, dry):
-    """Optional second nightly job: local-LLM consolidation ('dreaming'). Off by
-    default — needs Ollama, and unlike the graph rebuild it makes a handful of LLM
-    calls, so it's opt-in even when --schedule is set."""
-    if not cfg["schedule_nightly_dream"]:
-        return
-    if not tools["ollama"]:
-        warn("ollama not installed — skipping nightly dream schedule (needs a local model)")
-        return
-    dream = os.path.join(cfg["scripts_dir"], "dream_run.sh")
-    system = platform.system()
-    info(f"nightly dreaming ({system})")
+# ------------------------------------------------------- manifest & drift check
+
+def _sha256(path):
+    try:
+        h = hashlib.sha256()
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(65536), b""):
+                h.update(chunk)
+        return h.hexdigest()
+    except OSError:
+        return None
+
+
+def _installed_files(cfg):
+    """Yield (repo_relpath, installed_dest) for every command/hook/engine/script file."""
+    for fn in sorted(os.listdir(os.path.join(REPO, "claude", "commands"))):
+        if fn.endswith(".md"):
+            yield ("claude/commands/" + fn, os.path.join(cfg["claude_dir"], "commands", fn))
+    for fn in HOOK_FILES:
+        yield ("claude/hooks/" + fn, os.path.join(cfg["claude_dir"], "hooks", fn))
+    for fn in ENGINE_FILES:
+        yield ("claude/personal-os/" + fn, os.path.join(cfg["personal_os_home"], fn))
+    for fn in sorted(os.listdir(os.path.join(REPO, "scripts"))):
+        if os.path.isfile(os.path.join(REPO, "scripts", fn)):
+            yield ("scripts/" + fn, os.path.join(cfg["scripts_dir"], fn))
+
+
+def write_manifest(cfg, dry):
+    """Record the sha256 of every file as installed, so --check-drift can later
+    distinguish 'you customized this locally' from 'the repo moved ahead'."""
+    mpath = os.path.join(cfg["personal_os_home"], "install-manifest.json")
+    info(f"install manifest → {mpath}")
     if dry:
         return
-    if system == "Darwin":
-        label = "com.personal-os.dream"
-        plist = os.path.join(HOME, "Library", "LaunchAgents", label + ".plist")
-        os.makedirs(os.path.dirname(plist), exist_ok=True)
-        open(plist, "w").write(f"""<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-  <key>Label</key><string>{label}</string>
-  <key>ProgramArguments</key><array><string>/bin/sh</string><string>{dream}</string></array>
-  <key>EnvironmentVariables</key><dict>
-    <key>PERSONAL_OS_VAULT</key><string>{cfg['vault_dir']}</string>
-    <key>PERSONAL_OS_SCRIPTS_DIR</key><string>{cfg['scripts_dir']}</string>
-    <key>PERSONAL_OS_LOG_DIR</key><string>{cfg['log_dir']}</string>
-    <key>PERSONAL_OS_HOME</key><string>{cfg['personal_os_home']}</string>
-    <key>PERSONAL_OS_OLLAMA</key><string>{cfg['ollama_endpoint']}</string>
-    <key>PERSONAL_OS_EMBED_MODEL</key><string>{cfg['embed_model']}</string>
-    <key>PERSONAL_OS_DREAM_MODEL</key><string>{cfg['dream_gen_model']}</string>
-  </dict>
-  <key>ProcessType</key><string>Background</string>
-  <key>Nice</key><integer>10</integer>
-  <key>LowPriorityIO</key><true/>
-  <key>StartCalendarInterval</key><dict><key>Hour</key><integer>4</integer><key>Minute</key><integer>45</integer></dict>
-</dict></plist>
-""")
-        subprocess.run(["launchctl", "unload", plist], capture_output=True)
-        subprocess.run(["launchctl", "load", plist], capture_output=True)
-        ok(f"launchd job loaded ({label}) — 04:45, 30min after the graph rebuild")
-    else:
-        line = f"45 4 * * * PERSONAL_OS_VAULT={cfg['vault_dir']} " \
-               f"PERSONAL_OS_SCRIPTS_DIR={cfg['scripts_dir']} " \
-               f"PERSONAL_OS_HOME={cfg['personal_os_home']} " \
-               f"PERSONAL_OS_OLLAMA={cfg['ollama_endpoint']} " \
-               f"PERSONAL_OS_EMBED_MODEL={cfg['embed_model']} " \
-               f"PERSONAL_OS_DREAM_MODEL={cfg['dream_gen_model']} /bin/sh {dream}"
-        warn("Linux: add this to your crontab (`crontab -e`) or a systemd user timer:")
-        print("   " + line)
+    files = {}
+    for rel, dest in _installed_files(cfg):
+        h = _sha256(dest)
+        if h is not None:
+            files[rel] = {"sha256": h, "dest": dest}
+    os.makedirs(cfg["personal_os_home"], exist_ok=True)
+    tmp = mpath + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump({"version": 1, "ts": datetime.now().isoformat(timespec="seconds"),
+                   "files": files}, f, indent=1)
+    os.replace(tmp, mpath)
+    ok(f"manifest written ({len(files)} files)")
+
+
+def check_drift(cfg):
+    """Three-way compare per installed file: live (installed) vs manifest vs repo.
+
+      live==manifest && repo==manifest  → in sync
+      live==manifest && repo!=manifest  → update available (safe to re-run install)
+      live!=manifest && repo==manifest  → locally customized (re-install would clobber)
+      live!=manifest && repo!=manifest  → conflict (both moved — merge by hand)
+    """
+    mpath = os.path.join(cfg["personal_os_home"], "install-manifest.json")
+    try:
+        manifest = json.load(open(mpath))
+    except Exception:
+        print(f"no readable manifest at {mpath} — run install.py once to create it.")
+        return 1
+    buckets = {"in sync": [], "update available": [], "locally customized": [],
+               "conflict": [], "missing live file": []}
+    for rel, entry in sorted(manifest.get("files", {}).items()):
+        h_m = entry.get("sha256")
+        h_live = _sha256(entry.get("dest", ""))
+        h_repo = _sha256(os.path.join(REPO, rel))
+        if h_live is None:
+            buckets["missing live file"].append(rel)
+        elif h_live == h_m and h_repo == h_m:
+            buckets["in sync"].append(rel)
+        elif h_live == h_m:
+            buckets["update available"].append(rel)
+        elif h_repo == h_m:
+            buckets["locally customized"].append(rel)
+        else:
+            buckets["conflict"].append(rel)
+    print(f"Personal OS — drift check (manifest: {manifest.get('ts', '?')})")
+    for name in ("in sync", "update available", "locally customized", "conflict",
+                 "missing live file"):
+        files = buckets[name]
+        if not files:
+            continue
+        print(f"  {name}: {len(files)}")
+        if name != "in sync":
+            for rel in files:
+                print(f"    - {rel}")
+    if buckets["update available"]:
+        print("→ re-run install.py to pick up repo updates.")
+    if buckets["locally customized"]:
+        print("→ locally customized files would be OVERWRITTEN by a re-install "
+              "(a backup is taken) — port your changes upstream or keep a copy.")
+    if buckets["conflict"]:
+        print("→ conflicts need a manual merge before re-installing.")
+    return 0
 
 
 # --------------------------------------------------------------------- main
@@ -450,16 +559,24 @@ def main():
     ap.add_argument("--lang", choices=["en", "de"])
     ap.add_argument("--no-examples", action="store_true")
     ap.add_argument("--link", action="store_true", help="symlink instead of copy (dev)")
-    ap.add_argument("--schedule", action="store_true")
+    ap.add_argument("--schedule", action="store_true",
+                    help="register the nightly graph rebuild (04:15)")
     ap.add_argument("--schedule-dream", action="store_true",
-                    help="also register the optional nightly dreaming pass (needs ollama)")
+                    help="register the nightly dreaming pass (04:45, ~30min after the graph rebuild)")
+    ap.add_argument("--autopush", action="store_true",
+                    help="opt-in Stop hook: commit+push the vault at session end "
+                         "(requires a vault git remote)")
     ap.add_argument("--no-embed", action="store_true",
                     help="don't build the qmd index now (do it later with qmd update && qmd embed)")
+    ap.add_argument("--check-drift", action="store_true",
+                    help="compare installed files vs install manifest vs repo, then exit")
     ap.add_argument("--yes", "-y", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
     cfg = load_config(args)
+    if args.check_drift:
+        return check_drift(cfg)
     tools = detect_tools()
 
     print(c("\nPersonal OS — install plan", "1"))
@@ -470,6 +587,9 @@ def main():
     print("  log dir:   ", cfg["log_dir"])
     print("  language:  ", cfg["lang"])
     print("  examples:  ", "yes" if cfg["install_examples"] else "no")
+    print("  schedule:  ", ("graph " if cfg["schedule_nightly_graph"] else "")
+          + ("dream" if cfg["schedule_nightly_dream"] else "") or "none")
+    print("  autopush:  ", "on Stop (opt-in)" if cfg["autopush_on_stop"] else "no")
     print("  qmd:       ", c("found", "32") if tools["qmd"] else c("MISSING (core)", "31"))
     print("  graphify:  ", c("found", "32") if tools["graphify"] else c("missing (optional)", "33"))
     print("  ollama:    ", c("found", "32") if tools["ollama"] else c("missing (optional)", "33"))
@@ -493,7 +613,7 @@ def main():
     append_claude_md(cfg, args.dry_run)
     setup_qmd(cfg, tools, args.dry_run, args.no_embed)
     setup_scheduler(cfg, tools, args.dry_run)
-    setup_dream_scheduler(cfg, tools, args.dry_run)
+    write_manifest(cfg, args.dry_run)
 
     print()
     ok("Personal OS installed.")

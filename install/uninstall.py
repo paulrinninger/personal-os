@@ -2,8 +2,10 @@
 """Personal OS uninstaller — reverse what install.py did. Conservative by default.
 
 Removes: our hook groups + env keys from settings.json, our commands/hooks/engine,
-the scripts dir, our CLAUDE.md block, the launchd job. LEAVES your vault and the
-external tools (qmd/graphify/ollama) in place.
+the scripts dir, our CLAUDE.md block, the launchd jobs (graph rebuild + dream), and
+the dreaming engine's state files. LEAVES your vault (including any dream notes in
+<vault>/_inbox/dreams/ — those are your content) and the external tools
+(qmd/graphify/ollama) in place.
 
 Usage:
   python3 install/uninstall.py                 # remove the integration, keep the vault
@@ -18,12 +20,15 @@ import sys
 
 HOME = os.path.expanduser("~")
 HOOK_SENTINELS = (
-    "recall-lessons.py", "risk-recall.py", "save_nudge.sh",
+    "recall-lessons.py", "risk-recall.py", "save_nudge.sh", "health-sentinel.py",
+    "vault_autopush.sh", "dream_run.sh",
     "checkpoint session log", "graphify: knowledge graph at graphify-out",
 )
 ENV_KEYS = ("PERSONAL_OS_VAULT", "PERSONAL_OS_CLAUDE_DIR", "PERSONAL_OS_SCRIPTS_DIR",
-            "PERSONAL_OS_LOG_DIR", "PERSONAL_OS_HOME", "PERSONAL_OS_OLLAMA", "PERSONAL_OS_LANG")
+            "PERSONAL_OS_LOG_DIR", "PERSONAL_OS_HOME", "PERSONAL_OS_OLLAMA",
+            "PERSONAL_OS_DREAM_MODEL", "PERSONAL_OS_LANG")
 START, END = "<!-- personal-os:start -->", "<!-- personal-os:end -->"
+LAUNCHD_LABELS = ("com.personal-os.graph-rebuild", "com.personal-os.dream")
 
 
 def expand(p):
@@ -43,6 +48,7 @@ def main():
     ap.add_argument("--yes", "-y", action="store_true")
     args = ap.parse_args()
     cd = expand(args.claude_dir)
+    state_home = os.path.join(cd, "personal-os")  # install.py's default personal_os_home
 
     if not args.yes:
         if input("Remove the Personal OS integration (your vault stays)? [y/N] ").strip().lower() \
@@ -79,8 +85,8 @@ def main():
     # commands / hooks / engine
     for f in ("commands/save.md", "commands/lesson.md", "commands/idea.md", "commands/os.md",
               "commands/resume.md", "commands/mine-chats.md", "commands/lessons-gc.md",
-              "commands/harvest.md",
-              "hooks/recall-lessons.py", "hooks/risk-recall.py",
+              "commands/harvest.md", "commands/dream.md", "commands/producer.md",
+              "hooks/recall-lessons.py", "hooks/risk-recall.py", "hooks/health-sentinel.py",
               "personal-os/os_lessons.py", "personal-os/os_doctor.py", "personal-os/README.md"):
         p = os.path.join(cd, f)
         if os.path.lexists(p):
@@ -93,14 +99,33 @@ def main():
         shutil.rmtree(sd, ignore_errors=True)
         ok(f"scripts removed ({sd})")
 
-    # launchd job (macOS)
-    plist = os.path.join(HOME, "Library", "LaunchAgents", "com.personal-os.graph-rebuild.plist")
-    if os.path.isfile(plist):
-        subprocess.run(["launchctl", "unload", plist], capture_output=True)
-        os.remove(plist)
-        ok("nightly graph job removed")
+    # launchd jobs (macOS): graph rebuild + dream
+    for label in LAUNCHD_LABELS:
+        plist = os.path.join(HOME, "Library", "LaunchAgents", label + ".plist")
+        if os.path.isfile(plist):
+            subprocess.run(["launchctl", "unload", plist], capture_output=True)
+            os.remove(plist)
+            ok(f"nightly job removed ({label})")
 
-    info("Left in place: your vault, qmd/graphify/ollama, lesson-fires log, qmd index.")
+    # dreaming engine + install state (under the state home). Dream NOTES in
+    # <vault>/_inbox/dreams/ and producer drafts in _inbox/producer-drafts/ are user
+    # content and stay — as do producer-queue.jsonl / producer-templates.json (you
+    # authored those, they are lead data, not engine state).
+    for f in ("dream-cursor.json", "dream-embeds.json", "dream-feedback.jsonl",
+              "ventures-cursor.json", "ventures-embeds.json", "producer-feedback.jsonl",
+              "dream.off", "install-manifest.json", "health.json"):
+        p = os.path.join(state_home, f)
+        if os.path.lexists(p):
+            os.remove(p)
+    for d in ("dream-work", "health", "locks"):
+        p = os.path.join(state_home, d)
+        if os.path.isdir(p):
+            shutil.rmtree(p, ignore_errors=True)
+    ok("dream/health state removed")
+
+    info("Left in place: your vault (incl. dream notes in _inbox/dreams/ and producer "
+         "drafts), producer queue/templates (your lead data), "
+         "qmd/graphify/ollama, lesson-fires log, qmd index.")
     info("Note: the qmd index config at ~/.config/qmd/index.yml was left (delete manually if unused).")
 
     if args.purge:

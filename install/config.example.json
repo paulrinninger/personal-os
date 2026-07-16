@@ -15,12 +15,15 @@
   "install_examples": true,
   "schedule_nightly_graph": false,
 
-  "_import_chats_nightly_note": "OFF by default. If true (and you scheduled the nightly job), imports ALL your Claude Code transcripts into the vault so /mine-chats has input. This is a privacy choice — chats stay local and chats/ is gitignored, but enable it knowingly.",
-  "import_chats_nightly": false,
-
-  "_dream_note": "Nightly local-LLM consolidation ('dreaming') — a suggestions-only digest at _inbox/dreams/, reviewed via /dream review. Needs Ollama. Separate opt-in from schedule_nightly_graph since it makes LLM calls (capped, but still real compute).",
+  "_dream_note": "Nightly local-LLM consolidation ('dreaming') — a suggestions-only digest at _inbox/dreams/, reviewed via /dream review. Registered at 04:45, ~30min after the graph rebuild. Wants Ollama (without it only the LLM-free passes run). Separate opt-in from schedule_nightly_graph since it makes LLM calls (capped, but still real compute). Same as passing --schedule-dream.",
   "schedule_nightly_dream": false,
   "dream_gen_model": "llama3.2:3b",
+
+  "_autopush_note": "OFF by default. If true, adds a Stop hook that commits+pushes the vault to ITS OWN git remote at session end (allowlist staging — chats/ and _inbox/ can never be staged). Requires the vault to be a git repo with a remote. Same as passing --autopush.",
+  "autopush_on_stop": false,
+
+  "_import_chats_nightly_note": "OFF by default. If true (and you scheduled the nightly job), imports ALL your Claude Code transcripts into the vault so /mine-chats has input. This is a privacy choice — chats stay local and chats/ is gitignored, but enable it knowingly.",
+  "import_chats_nightly": false,
 
   "auto_install_deps": false
 }
