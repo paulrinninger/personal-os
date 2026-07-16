@@ -44,6 +44,10 @@ Typically driven by dream_run.sh (RAM pre-flight, kill switch, one pass per invo
 from __future__ import annotations
 import argparse, datetime as dt, glob, json, math, os, re, shutil, subprocess, sys, urllib.request
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import pos_utils
+import qmd_search
+
 VAULT = os.path.expanduser(os.environ.get("PERSONAL_OS_VAULT", "~/vault"))
 PO = os.path.expanduser(os.environ.get("PERSONAL_OS_HOME", os.path.join(
     os.path.expanduser(os.environ.get("PERSONAL_OS_CLAUDE_DIR", "~/.claude")), "personal-os")))
@@ -68,10 +72,6 @@ OLLAMA_EMBED = OLLAMA_BASE + "/api/embeddings"
 OLLAMA_VERSION = OLLAMA_BASE + "/api/version"
 GEN_MODEL = os.environ.get("PERSONAL_OS_DREAM_MODEL", "llama3.2:3b")
 EMBED_MODEL = os.environ.get("PERSONAL_OS_EMBED_MODEL", "nomic-embed-text")
-
-# Mirrors vault-scaffold/'s default collections (config/qmd-index.example.yml).
-QMD_COLLECTIONS = {"lessons": "lessons", "knowledge": "knowledge", "projects": "projects",
-                   "profile": "profile", "ideas": "ideas", "logs": "logs"}
 
 # Baseline params; nudged over time by acceptance feedback from `/dream review` (see
 # adaptive_params). Deliberately conservative caps — a dream note should be a two-minute
@@ -147,13 +147,10 @@ def write_pass(args, name: str, data: dict):
     data["_pass"] = name
     data["_ts"] = dt.datetime.now().isoformat(timespec="seconds")
     path = os.path.join(workdir(args), name + ".json")
-    # atomic tmp+replace write, same pattern already used for the cursor/embed-cache/queue
-    # files -- without it, the orchestrator's timeout can SIGTERM mid-json.dump and leave a
-    # torn file that pass_done() would otherwise misread as "done".
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=1)
-    os.replace(tmp, path)
+    # atomic tmp+replace write (shared pos_utils implementation) — without it, the
+    # orchestrator's timeout can SIGTERM mid-json.dump and leave a torn file that
+    # pass_done() would otherwise misread as "done".
+    pos_utils.write_atomic(path, data)
     log(f"[{name}] wrote {path}")
 
 
@@ -278,6 +275,9 @@ def cmd_fires(args):
                 continue
             if (now - ts).days > 7:
                 continue
+            # miss records (type: zero/timeout/error/no_qmd) do not count as recalls
+            if r.get("type", "hit") != "hit":
+                continue
             total7 += 1
             path = r.get("path", "?")
             a = per_lesson.setdefault(path, {"count": 0, "max_score": 0})
@@ -293,8 +293,23 @@ def cmd_fires(args):
     hot = [{"path": k, "count": v["count"], "max_score": v["max_score"]}
            for k, v in per_lesson.items() if v["count"] >= 3 and v["max_score"] >= 65]
     hot.sort(key=lambda h: -h["count"])
+    # The hooks also log misses (type: zero/timeout/error/no_qmd) — a 7-day count
+    # for the report makes coverage gaps and cold-start timeouts visible.
+    misses = {"zero": 0, "timeout": 0, "error": 0, "no_qmd": 0}
+    if os.path.exists(FIRE_LOG):
+        for line in open(FIRE_LOG, encoding="utf-8", errors="replace"):
+            try:
+                r = json.loads(line)
+                if (now - dt.datetime.fromisoformat(r.get("ts", ""))).days > 7:
+                    continue
+            except Exception:
+                continue
+            typ = r.get("type", "hit")
+            if typ in misses:
+                misses[typ] += 1
     write_pass(args, "fires", {
         "params": p, "total_fires_7d": total7,
+        "misses_7d": {k: v for k, v in misses.items() if v},
         "top_firers": [{"path": k, "count": v["count"]} for k, v in top],
         "hot_lessons": hot[:p["cap"]],
         "trigger_mix": triggers,
@@ -328,33 +343,26 @@ def cmd_gc_digest(args):
 
 
 # ---------------------------------------------------------- pass: connections
-QMD_HIT_RE = re.compile(r"^qmd://([^/]+)/(.+?)(?::\d+)?\s+#\S+\s*$")
-
-
 def qmd_vsearch(query: str, n: int = 5, timeout: int = 45) -> list[dict]:
-    """Parses `qmd vsearch` output into [{collection, relpath, path, score, snippet}]."""
-    try:
-        out = subprocess.run(["qmd", "vsearch", query, "-n", str(n)],
-                             capture_output=True, text=True, timeout=timeout).stdout
-    except Exception:
+    """Thin adapter over the shared client qmd_search.vsearch (JSON mode).
+
+    Replaces the fourth divergent hand-rolled parser — the old `Score: N%` regex
+    would have silently scored everything 0 on %-less qmd output (no suggestions,
+    no error)."""
+    res = qmd_search.vsearch(query, n=n, timeout=timeout)
+    if res["outcome"] != "ok":
+        log(f"[qmd] WARN: vsearch {res['outcome']}: {res['error']}")
         return []
-    hits, cur = [], None
-    for line in out.splitlines():
-        m = QMD_HIT_RE.match(line.strip())
-        if m:
-            coll, rel = m.group(1), m.group(2)
-            base = QMD_COLLECTIONS.get(coll)
-            cur = {"collection": coll, "relpath": rel,
-                   "path": os.path.join(VAULT, base, rel) if base else None,
-                   "score": 0, "snippet": ""}
-            hits.append(cur)
-            continue
-        if cur is not None:
-            ms = re.match(r"^Score:\s*(\d+)%", line.strip())
-            if ms:
-                cur["score"] = int(ms.group(1))
-            elif line.startswith("- ") and not cur["snippet"]:
-                cur["snippet"] = line.strip()[:180]
+    hits = []
+    for h in res["hits"]:
+        parts = h["path"].split("/", 1)
+        hits.append({
+            "collection": parts[0] if len(parts) > 1 else "",
+            "relpath": parts[1] if len(parts) > 1 else h["path"],
+            "path": h["abs_path"],
+            "score": h["score"],
+            "snippet": h["snippet"][:180],
+        })
     return hits
 
 
@@ -425,11 +433,15 @@ def _yesterday_docs(args, cap: int) -> tuple[list[str], float]:
             continue
         if mt > last:
             chats.append((mt, f))
-    chats.sort(reverse=True)
+    # FIFO (oldest first) + advance the cursor ONLY over the slice actually consumed.
+    # Previously: sort(reverse) + cursor = max over ALL — everything beyond `room`
+    # was skipped permanently (backlog chats silently vanished from dreaming).
+    chats.sort()
     docs = list(dict.fromkeys(docs))[:cap]
     room = max(0, cap - len(docs))
-    docs += [f for _, f in chats[:room]]
-    return docs, (max(m for m, _ in chats) if chats else last)
+    taken = chats[:room]
+    docs += [f for _, f in taken]
+    return docs, (max(m for m, _ in taken) if taken else last)
 
 
 def cmd_residue(args):
@@ -491,9 +503,7 @@ def cmd_residue(args):
         if os.path.exists(CURSOR_FILE):
             cursor = json.load(open(CURSOR_FILE))
         cursor["chats_mtime"] = new_cursor
-        tmp = CURSOR_FILE + ".tmp"
-        json.dump(cursor, open(tmp, "w"))
-        os.replace(tmp, CURSOR_FILE)
+        pos_utils.write_atomic(CURSOR_FILE, cursor)
     except Exception as e:
         log(f"[residue] WARN: cursor not updated: {e}")
 
@@ -549,9 +559,7 @@ def cmd_triage(args):
         best = max(((cosine(vec, h["vec"]), h["name"]) for h in hubs), default=(0, "?"))
         scored.append({"card": os.path.relpath(f, VAULT), "hub": best[1],
                        "score": round(best[0], 3)})
-    tmp = EMBED_CACHE + ".tmp"
-    json.dump(cache, open(tmp, "w"))
-    os.replace(tmp, EMBED_CACHE)
+    pos_utils.write_atomic(EMBED_CACHE, cache)
     scored.sort(key=lambda s: -s["score"])
     write_pass(args, "triage", {
         "params": p, "cards_total": len(cards), "new_embeds": new_embeds,
@@ -718,12 +726,8 @@ def cmd_ventures(args):
 
     for path, mt in evaluated:  # only for candidates actually evaluated above, not all candidates
         cursor[path] = mt
-    tmp = VENTURES_CURSOR + ".tmp"
-    json.dump(cursor, open(tmp, "w"))
-    os.replace(tmp, VENTURES_CURSOR)
-    tmp = VENTURES_EMBEDS + ".tmp"
-    json.dump(cache, open(tmp, "w"))
-    os.replace(tmp, VENTURES_EMBEDS)
+    pos_utils.write_atomic(VENTURES_CURSOR, cursor)
+    pos_utils.write_atomic(VENTURES_EMBEDS, cache)
 
     write_pass(args, "ventures", {"params": p, "candidates_checked": len(candidates), "patterns": patterns})
 
