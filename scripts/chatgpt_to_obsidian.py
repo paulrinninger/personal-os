@@ -30,9 +30,10 @@ Incremental: a state file (<vault>/.chatgpt_import_state.json) maps conversation
 you can re-run this against a newer export and only get the delta.
 
 PRIVACY: your ChatGPT history is often more personal than coding transcripts (health,
-finances, relationships). Consider gitignoring <vault>/chats/gpt/ in your vault repo,
-the same way you might gitignore raw imports elsewhere — the distilled notes that
-/mine-chats produces are what should end up versioned.
+finances, relationships). The vault scaffold's .gitignore already excludes chats/
+entirely (raw imports never reach a remote) — keep it that way if you maintain your
+own ignore rules. The distilled notes that /mine-chats produces are what should end
+up versioned.
 
 Usage:
   python3 chatgpt_to_obsidian.py --zip ~/Downloads/chatgpt-export.zip --dry-run
@@ -79,6 +80,13 @@ KEYWORD_TAG_MAP = {
 
 def log(*a):
     print(*a, file=sys.stderr, flush=True)
+
+def save_state(state: dict) -> None:
+    """Atomic state write (tmp + os.replace) — an interrupt mid-write must never
+    leave a torn JSON behind, or the next run would re-import everything."""
+    tmp = STATE_FILE.with_name(STATE_FILE.name + ".tmp")
+    tmp.write_text(json.dumps(state, indent=0))
+    os.replace(tmp, STATE_FILE)
 
 def slugify(text: str, maxlen: int = 48) -> str:
     s = (text or "").lower()
@@ -299,7 +307,7 @@ def main():
                 written += 1
             log(f"  {shard}: done (written so far: {written})")
     if not args.dry_run:
-        STATE_FILE.write_text(json.dumps(state, indent=0))
+        save_state(state)
     if args.manifest:
         with open(args.manifest, "w", encoding="utf-8") as mf:
             for row in manifest_rows:
