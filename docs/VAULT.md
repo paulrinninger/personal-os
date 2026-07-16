@@ -41,7 +41,7 @@ types, and templates.
 └── chats/
     ├── code/           # importierte Claude-Code-Transkripte
     ├── web/            # importierte Web-Chat-Transkripte
-    └── gpt/            # optional: ChatGPT-Export-Import (chatgpt_to_obsidian.py), oft gitignored
+    └── gpt/            # optional: ChatGPT-Export-Import (chatgpt_to_obsidian.py); das Scaffold gitignored chats/ komplett
 ```
 
 ### EN
@@ -71,7 +71,7 @@ types, and templates.
 └── chats/
     ├── code/           # imported Claude Code transcripts
     ├── web/            # imported web-chat transcripts
-    └── gpt/            # optional: ChatGPT export import (chatgpt_to_obsidian.py), often gitignored
+    └── gpt/            # optional: ChatGPT export import (chatgpt_to_obsidian.py); the scaffold gitignores chats/ entirely
 ```
 
 ---

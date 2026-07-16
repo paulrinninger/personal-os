@@ -225,6 +225,39 @@ schließt seine eigenen Lücken und überwacht seine eigene Gesundheit:
 Beides ist „Maintain", eine Stufe weitergedacht: nicht nur den Speicher pflegen, sondern den **Loop
 selbst** am Leben halten.
 
+### DE — Dreaming: die nächtliche Konsolidierung
+
+Menschliche Gedächtnisse konsolidieren im Schlaf — Personal OS auch (Opt-in,
+`--schedule-dream`). Einmal pro Nacht verdichtet eine lokale Engine den Tagesrest,
+schlägt fehlende `[[Verbindungen]]` zwischen Notizen vor, erkennt Feuer-Muster im
+Recall (inkl. der *Misses*), kaut Lesson-Merges vor, rankt die Review-Inbox gegen
+deine aktiven Projekte, prüft neue Projekte gegen die „Form" vergangener gescheiterter
+Ventures und rendert (aus einer Lead-Queue, die du selbst befüllst) Outreach-Entwürfe.
+Alles landet als **Checkbox-Vorschläge** in einer einzigen Traumnotiz
+(`_inbox/dreams/`, gitignored) — nichts wird je automatisch geändert oder versendet.
+Du reviewst morgens mit `/dream review` (risk-getiert) bzw. `/producer review`; jedes
+Y/N verschiebt die Schwellwerte des jeweiligen Passes (Zähler, kein ML). Nur der
+Tagesrest-Pass MUSS ein LLM benutzen (klein, lokal, hart gedeckelt; ventures darf
+einen einzigen Call fürs Verdikt machen); Kill-Switch: `dream.off` im State-Home.
+Dreaming ist die Maintain-Phase, die von allein läuft — der Vault wird über Nacht
+*vernetzter*, nicht nur größer.
+
+### EN — Dreaming: overnight consolidation
+
+Human memory consolidates during sleep — so does Personal OS (opt-in,
+`--schedule-dream`). Once a night, a local engine condenses yesterday's residue,
+proposes missing `[[connections]]` between notes, spots firing patterns in recall
+(including the *misses*), pre-chews lesson merges, ranks the review inbox against
+your active projects, checks new projects against the "shape" of past failed
+ventures, and renders outreach drafts (from a lead queue you fill yourself).
+Everything lands as **checkbox suggestions** in a single dream note
+(`_inbox/dreams/`, gitignored) — nothing is ever changed or sent automatically. You
+review in the morning with `/dream review` (risk-tiered) resp. `/producer review`;
+every Y/N nudges that pass's thresholds (counters, not ML). Only the residue pass
+MUST use an LLM (small, local, hard-capped; ventures may make a single call to phrase
+its verdict); kill switch: `dream.off` in the state home. Dreaming is the Maintain
+phase that runs by itself — overnight the vault gets *more connected*, not just bigger.
+
 ### EN
 
 Two mechanisms extend the **Maintain** phase from section 1 into "self-heal" — the system closes its

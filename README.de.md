@@ -77,6 +77,34 @@ Zwei Hooks erledigen die Arbeit — und genau das gibt dir keine passive Notiz-A
 
 ---
 
+## Dreaming — der Vault konsolidiert sich nachts selbst
+
+Recall beantwortet „was weiß ich schon über *das hier*?" Dreaming beantwortet die Frage, die niemand stellt: „was sollte mir über alles hinweg auffallen?" Einmal pro Nacht (Opt-in: `--schedule-dream`) läuft ein kurzer lokaler Durchgang wie ein Gehirn, das im Schlaf Erinnerungen konsolidiert — und schreibt **eine Vorschlagsnotiz**, sonst nichts.
+
+Die ehrliche Mechanik — acht Pässe, bewusst billig:
+
+| Pass | Was er findet | Inferenz |
+|---|---|---|
+| `fires` | welche Lessons diese Woche feuerten, welche heiß laufen, wo der Recall *danebengriff* | keine (liest das Fire-Log) |
+| `producer` | rendert Cold-Outreach-Entwürfe aus einer Lead-Queue, die **du** selbst befüllst | keine — reines Templating (ein Modell kann den Pain-Point eines echten Leads nicht erfinden) |
+| `gc-digest` | Merge-/Cross-Link-Kandidaten unter den Lessons | lokale Embeddings (ollama) |
+| `connections` | Notizen, die zusammengehören, aber nie `[[verlinkt]]` sind | qmd vsearch (Embeddings, kein LLM) |
+| `ventures` | wenn ein brandneues Projekt die „Form" deiner vergangenen done/parked-Ventures teilt | lokale Embeddings + transitiver Ähnlichkeits-Check; höchstens ein LLM-Call, um das Verdikt zu formulieren |
+| `triage` | welche Review-Inbox-Drafts zu deinen aktiven Projekten passen | lokale Embeddings (ollama) |
+| `residue` | „Was gestern passierte"-Digest aus Logs + neuen Chats | **der einzige Pflicht-LLM-Pass** — ein kleines lokales Modell (Default `llama3.2:3b`), hart gedeckelte Call-Zahl |
+| `report` | baut aus allem, was feuerte, die Traumnotiz | keine |
+
+Leitplanken — ein unbeaufsichtigter Nachtjob verdient sich Vertrauen, oder er verdient nichts:
+
+- **Nur Vorschläge.** Jede Ausgabe ist eine Checkbox in `<vault>/_inbox/dreams/YYYY-MM-DD-dream.md` (gitignored). Nichts editiert, löscht oder promotet eine echte Notiz. Nie. Producer-Entwürfe sind Textdateien in `_inbox/producer-drafts/` — ein echter Gmail-Entwurf entsteht ausschließlich über `/producer review` nach einem Ja, und gesendet wird nie.
+- **Harte Caps überall** — max. gescannte Notizen, max. Vorschläge, max. LLM-Calls, ein Venture-Muster pro Nacht. Eine Traumnotiz ist eine Zwei-Minuten-Lektüre, keine zweite Inbox. Pass-State ist owner-only und wird nach 7 Tagen geprunt.
+- **Du reviewst mit `/dream review`** — jedes Y/N wird protokolliert und speist adaptive Schwellwerte: Lehnst du die Vorschläge eines Passes ab, wird er strenger und leiser; nimmst du sie an, lockert er. Die Engine lernt deinen Geschmack mit Zählern, nicht mit ML. Reviews sind risk-getiert: trivial umkehrbare Aktionen (ein reziproker Wikilink) laufen automatisch, werden aber berichtet; alles, was echten Inhalt ändert, braucht dein Ja.
+- **Kill-Switch:** `touch ~/.claude/personal-os/dream.off`. Ein RAM-Pre-Flight skippt die LLM-Pässe auf einer ausgelasteten Maschine; jeder Pass ist resumefähig; die Modelle werden nach dem Lauf entladen.
+
+Weiterhin $0, weiterhin lokal: qmd + ollama sind die einzige Inferenz, nirgends in der Pipeline existiert ein API-Key.
+
+---
+
 ## Worauf es sich mit der Zeit aufsummiert
 
 Das ist der Teil, der ein Gedächtnis von einem Notizbuch trennt. Ein zustandsloser Assistent startet jede Session für immer bei null. Personal OS klettert immer weiter:
@@ -133,6 +161,17 @@ git clone <repo> && cd personal-os
 
 Der Installer legt `~/vault` an, führt die Befehle/Hooks/Skills in `~/.claude` zusammen — **ohne deine bestehenden Einstellungen zu überschreiben** —, schreibt die qmd-Index-Konfiguration und baut den ersten Index. Öffne dann Claude Code in **irgendeinem** Projekt und probiere `/lesson`, `/save`, `/os`. Prüfe die Verdrahtung jederzeit mit `python3 install/doctor.py` (es führt eine echte Recall-Abfrage Ende-zu-Ende aus).
 
+Optionale Flags, die sich lohnen:
+
+```bash
+./install/install.sh --schedule        # nächtlicher Graph-Rebuild + Index-Refresh (04:15)
+./install/install.sh --schedule-dream  # nächtlicher Dreaming-Pass (04:45, siehe oben)
+./install/install.sh --autopush        # Opt-in: Vault am Session-Ende committen+pushen
+                                       # (Allowlist-Staging — chats/ + _inbox/ können nie
+                                       #  gepusht werden; Vault braucht ein eigenes privates Remote)
+python3 install/install.py --check-drift   # später: installiert vs. Repo vs. Install-Manifest
+```
+
 ---
 
 ## Befehle
@@ -147,13 +186,15 @@ Der Installer legt `~/vault` an, führt die Befehle/Hooks/Skills in `~/.claude` 
 | `/mine-chats` | Destilliert Learnings aus importierten Chat-Transkripten |
 | `/lessons-gc` | Prunet kalte, veraltete und doppelte Lessons, um den Speicher scharf zu halten |
 | `/harvest` | Destilliert Lessons & Ideen aus Sessions, die ohne `/save` endeten, in eine Review-Inbox |
+| `/dream` | Zeigt die neueste nächtliche Traumnotiz; `/dream review` = risk-getiertes Y/N durch ihre Vorschläge |
+| `/producer` | Zeigt (oder `review`) wartende Cold-Outreach-Textentwürfe — echte Gmail-Drafts nur nach einem Ja, nie gesendet |
 
 ---
 
 ## Anforderungen
 
 - **OS:** macOS oder Linux (Windows über WSL) · **Claude Code** · **Python 3**
-- **qmd** — erforderlich (semantischer Recall) · **graphify** — optional (struktureller Recall) · **ollama** — optional (`/lessons-gc`-Dedup)
+- **qmd** — erforderlich (semantischer Recall) · **graphify** — optional (struktureller Recall) · **ollama** — optional (`/lessons-gc`-Dedup und der optionale nächtliche Dreaming-Pass)
 
 Das Repo wird **datenfrei** ausgeliefert: nur das Framework plus eine Handvoll generischer Beispiel-Notizen (z. B. *„never force-push a shared branch“*, *„cap LLM API costs“*). Siehe [`docs/`](docs/) für **SETUP**, **CONCEPTS**, **VAULT**, **COMMANDS** und [`docs/examples/os-dashboard.md`](docs/examples/os-dashboard.md) für ein Beispiel-Dashboard.
 
@@ -173,7 +214,11 @@ Das Repo wird **datenfrei** ausgeliefert: nur das Framework plus eine Handvoll g
 
 **Kann ich meinen bestehenden Obsidian-Vault nutzen?** Ja — der Vault ist einfach ein Obsidian-artiger Markdown-Ordner. Der Installer überschreibt keine bestehenden `~/.claude`-Einstellungen; richte den Index auf deinen eigenen Vault, wenn du magst.
 
-**Was, wenn ich graphify / ollama weglasse?** Beide sind optional. Ohne graphify verlierst du den strukturellen (Graph-)Recall, behältst aber den vollen semantischen Recall. Ohne ollama verlierst du nur den Dedup-Durchlauf in `/lessons-gc`. qmd ist die eine erforderliche Abhängigkeit.
+**Was, wenn ich graphify / ollama weglasse?** Beide sind optional. Ohne graphify verlierst du den strukturellen (Graph-)Recall, behältst aber den vollen semantischen Recall. Ohne ollama verlierst du den Dedup-Durchlauf in `/lessons-gc` und die Dreaming-Pässe, die Embeddings brauchen (die LLM-freien laufen weiter). qmd ist die eine erforderliche Abhängigkeit.
+
+**Was ist „Dreaming"?** Ein optionaler dritter Nightly-Job (`--schedule-dream`), der den Vault konsolidiert, während du schläfst — verdichtet den gestrigen Tag, schlägt `[[Wikilinks]]` zwischen Notizen vor, die sich nie referenzieren, flaggt Lesson-Merge-Kandidaten, rankt deine Review-Inbox, erkennt, wenn ein brandneues Projekt die Form vergangener gescheiterter Ventures teilt, und rendert (wenn du selbst eine Lead-Queue befüllst) Cold-Outreach-Entwürfe aus deinen eigenen Playbooks. Er schreibt eine reine Vorschlagsnotiz pro Nacht nach `_inbox/dreams/` und fasst nie eine echte Notiz an oder versendet etwas; Review über `/dream review` und `/producer review`. Die meisten Pässe sind reine Embedding-/Graph-Arbeit ganz ohne LLM — siehe die Sektion oben und `docs/COMMANDS.md` §3c.
+
+**Kann ich meine ChatGPT-Historie importieren?** Ja — `scripts/chatgpt_to_obsidian.py --zip <export.zip>` konvertiert einen ChatGPT-Datenexport in denselben Vault (`chats/gpt/`), inkrementell, sodass `/mine-chats` ihn destillieren kann. Ein manueller Einmal-Lauf, kein Teil des Nightly-Schedulers; siehe `docs/SETUP.md`.
 
 **Werden meine Daten irgendwohin gesendet?** Nein. Die Inferenz ist lokal und der Vault bleibt auf deiner Maschine. Es wird nichts hochgeladen.
 

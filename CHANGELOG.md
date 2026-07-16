@@ -5,51 +5,110 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.0] - 2026-07-16
 
 ### Added
 
-- **Two new dreaming passes: `ventures` and `producer`** (`scripts/dream.py`, `scripts/dream_run.sh`,
-  `/producer` command). `ventures` checks brand-new project hubs against your own past `done`/`parked`
-  projects for a shared "shape", using embeddings plus a transitive similarity check (candidate siblings
-  must also resemble *each other*, not just the new project) to keep false positives out — capped at
-  one pattern a night, with an optional single LLM call only to phrase the verdict. `producer` renders
-  cold-outreach drafts from a `producer-queue.jsonl` you fill in yourself (required fields `id`,
-  `observation`/`pain_point` — the latter two never invented) against `producer-templates.json`, pure
-  `str.format()`, no LLM call. Since `dream.py` runs as a cron script with no MCP access, real Gmail
-  drafts are only ever created by the new `/producer review` command, mirroring the existing
-  `/dream review` / `/harvest review` draft-then-approve pattern. Example configs:
+- **Nightly dreaming engine** (`scripts/dream.py` + `scripts/dream_run.sh` + `/dream`,
+  `install.py --schedule-dream`): once a night (04:45, ~30min after the graph rebuild,
+  low-priority) the vault consolidates itself — eight passes: firing patterns (incl. recall
+  *misses*), producer, missing `[[connections]]`, lesson-GC digest, venture patterns, inbox
+  triage, yesterday's residue, report. Only the residue pass **must** use an LLM (small local
+  model, hard-capped calls; ventures may add a single call to phrase its verdict) — the rest is
+  qmd/embeddings/pure Python, $0. Output is a single suggestions-only note under
+  `<vault>/_inbox/dreams/`; nothing ever edits a live note. `/dream review` walks it and each
+  Y/N feeds adaptive per-pass thresholds (counters, no ML). Kill switch (`dream.off`), RAM
+  pre-flight, per-pass resume with torn-file detection, mkdir lock, pass-state retention
+  (owner-only dirs, pruned after 7 days). Requires Ollama for the embedding/LLM passes; the
+  LLM-free ones run without it.
+- **Two dreaming passes with outward reach: `ventures` and `producer`** (+ `/producer` command).
+  `ventures` checks brand-new project hubs against your own past `done`/`parked` projects for a
+  shared "shape", using embeddings plus a transitive similarity check (candidate siblings must
+  also resemble *each other*, not just the new project) to keep false positives out — capped at
+  one pattern a night. `producer` renders cold-outreach drafts from a `producer-queue.jsonl` you
+  fill in yourself (required fields `id`, `observation`/`pain_point` — the latter two never
+  invented) against `producer-templates.json`, pure `str.format()`, no LLM call. Since
+  `dream.py` runs as a cron script with no MCP access, real Gmail drafts are only ever created
+  by `/producer review` — never sent, separate feedback channel (`producer-feedback.jsonl`) so
+  draft verdicts don't skew the other passes' thresholds. Example configs:
   `config/producer-*.example.*`.
-- **Adversarial bug-audit of the above two passes** (5 rounds, same session): fixed a cursor bug where
-  `ventures` silently marked candidate hubs "checked" without ever evaluating them once its nightly cap
-  was hit; a cluster-search bug that could miss a valid sibling pair not anchored to the top match; a
-  bug where the `producer` lead queue was never drained, so any unreviewed entry re-rendered into a new
-  duplicate draft every night; non-atomic pass-state writes that a killed run could leave torn (silently
-  read back as "already done"); a producer-templates parse error that looked identical to "nothing
-  queued tonight"; world-readable permissions on the pass-state directory (now owner-only for new
-  folders); a vision-model refusal that could pass through as an ordinary `public`-classified photo
-  description; and — the most consequential of the bunch — `/producer review`'s and `/dream review`'s
-  accept/reject feedback never actually reaching `adaptive_params()` for either pass, since the reviewed-
-  and-documented feedback schema didn't match what the code filtered on. Each finding independently
-  reproduced (regex tests, synthetic-vector simulations, isolated end-to-end runs) before fixing.
-- **Nightly "dreaming" pass** (`scripts/dream.py` + `scripts/dream_run.sh`, `/dream` command,
-  `install.py --schedule-dream`): an optional third nightly job that consolidates the vault while
-  you sleep — condenses yesterday's residue, proposes `[[wikilinks]]` between notes that never
-  reference each other, pre-chews lesson merge/cross-link candidates for `/lessons-gc`, surfaces
-  firing-pattern observations from the recall hooks, and ranks the review inbox against your
-  active projects. Writes exactly one suggestions-only note per night to `_inbox/dreams/`; never
-  edits a live note. Only its residue pass touches an LLM at all (hard-capped call count); the rest
-  is qmd/embeddings-only, $0. Requires Ollama; separate opt-in from `--schedule` since it makes
-  real (if capped) LLM calls. Feedback from `/dream review` adaptively tunes each pass's
-  thresholds/caps over time (counters only, no ML). New `os_doctor.py` check reports whether it's
-  running.
-- **ChatGPT export import** (`scripts/chatgpt_to_obsidian.py`): converts a ChatGPT data export
-  (zip) into the vault (`chats/gpt/`), one note per conversation, incrementally — same rule-based,
-  $0 tagging as `claude_to_obsidian.py`. Reads the zip directly (no extraction). Manual, one-off
-  tool, not part of the nightly scheduler; `/mine-chats` was extended to also watch `chats/gpt/`.
-- **`vault_autopush.sh`** + Stop-hook wiring: commits and pushes any pending vault changes to its
-  git remote at the end of every session, not just at the next scheduled graph rebuild. No-op if
-  the vault isn't a git repo with a remote configured.
+- **Adversarial bug-audit of the ventures/producer passes** (5 rounds): fixed a cursor bug where
+  `ventures` silently marked candidate hubs "checked" without ever evaluating them once its
+  nightly cap was hit; a cluster-search bug that could miss a valid sibling pair not anchored to
+  the top match; a bug where the `producer` lead queue was never drained, so any unreviewed
+  entry re-rendered into a new duplicate draft every night; non-atomic pass-state writes that a
+  killed run could leave torn (silently read back as "already done"); a producer-templates parse
+  error that looked identical to "nothing queued tonight"; world-readable permissions on the
+  pass-state directory (now owner-only for new folders); and `/producer review`'s and
+  `/dream review`'s accept/reject feedback never actually reaching `adaptive_params()`. Each
+  finding independently reproduced before fixing.
+- **Risk-tiered confirmation for `/dream review` and `/lessons-gc`**: purely additive,
+  trivially-reversible actions (reciprocal wikilinks, deadline extensions) run automatically but
+  are always reported; anything that changes real content (merges, rule corrections, archiving,
+  promotions) still needs an explicit yes — presented as ONE concrete proposal, not a
+  two-round "should I?" dance. Both commands close with a mandatory count-check so no checkbox
+  is silently skipped.
+- **ChatGPT import** (`scripts/chatgpt_to_obsidian.py`): converts a ChatGPT data-export zip into
+  one markdown note per conversation under `chats/gpt/` — reads the JSON shards straight out of
+  the zip (no extraction), recovers the canonical thread via parent pointers, drops thinking
+  traces. Rule-based tagging, $0, incremental across exports via an atomically-written state
+  file. Manual one-off, not part of the nightly scheduler. `/mine-chats` now mines
+  `chats/code/` **and** `chats/gpt/` (default batch 10).
+- **Opt-in vault autopush** (`scripts/vault_autopush.sh`, `install.py --autopush`): commit+push
+  the vault to its own private remote at session end (Stop hook) and from the nightly — one code
+  path. **Allowlist staging** (never `git add -A`), sensitive-path abort, mkdir lock, commit-rc
+  check, stray warnings. The Stop hook is appended programmatically at install time instead of
+  shipping unconditionally in the settings fragment.
+- **Health signal** (`scripts/pos_health.py`): the fail-open nightly wrappers now mirror every
+  step's rc/duration into a machine-readable `health.json`; degradation is delivered at most once
+  per day as a desktop notification. New SessionStart hook `health-sentinel.py` backstops a dead
+  scheduler and warms the qmd model against cold-start timeouts. `os_doctor.py` gained checks for
+  nightly step failures, recall-miss rates, chat-mining backlog, unreviewed dream notes, refs
+  queue, and autopush wiring — and records its verdict into `health.json`.
+- **Shared foundations** (`scripts/qmd_search.py`, `scripts/pos_utils.py`): ONE qmd client
+  (`vsearch --format json`, scores normalized 0–100, never raises) replaces four divergent
+  hand-rolled parsers; shared atomic writes, mkdir locks with stale-steal, and fire-log
+  append/compact used by hooks, dream engine, and doctors.
+- **Miss-logging in the recall hooks**: `recall-lessons.py`/`risk-recall.py` now log zero-hit,
+  timeout, and error outcomes (`type` field) alongside hits — recall precision and cold-start
+  rates become measurable (`/os doctor`, dream `fires` pass). Fire counting everywhere skips
+  non-hit records.
+- **Install manifest + drift check**: `install.py` writes `install-manifest.json` (sha256 of every
+  installed file); `install.py --check-drift` three-way-compares installed vs manifest vs repo
+  ("in sync" / "update available" / "locally customized" / "conflict"). Maintainer counterpart:
+  `scripts/dev_drift.sh`.
+- **Test suite + CI**: `tests/` (pytest, stdlib mocks only — no qmd/ollama/network) covering the
+  qmd JSON parser, the dream chats-cursor, ventures/producer registration + offline producer
+  templating/queue-drain, atomic writes + locking, fire-log rotation, Stop-hook save detection,
+  chat-import state atomicity, and the health engine; new GitHub Actions job
+  `.github/workflows/tests.yml`.
+
+### Fixed
+
+- **Dream chats-cursor skip bug** (residue pass): new chats were sorted newest-first but the
+  cursor advanced past ALL of them — anything beyond the per-night cap silently vanished from
+  dreaming forever. Now FIFO with the cursor advancing only over the consumed slice. (The
+  bug-audit round above fixed the analogous ventures cursor; this one in residue was still live.)
+- **`dream_run.sh` word-splitting**: passes were invoked via an unquoted command string, breaking
+  on a scripts dir containing spaces; each pass now calls `python3 "<dir>/dream.py"` directly.
+- **Non-atomic state writes**: chat-import state files, the wikilink-injected `graph.json`, dream
+  cursor/embed caches, and `health.json` are all written via tmp + `os.replace` (shared
+  `pos_utils.write_atomic`) — a crash mid-write can no longer tear state apart.
+- **Four divergent qmd parsers** (two hooks, dream connections pass, install doctor) collapsed
+  into the shared JSON-mode client — the old `Score: N%` regexes would silently score everything
+  0 on unexpected output.
+
+### Security / Privacy
+
+- **Vault scaffold `.gitignore` now excludes `chats/` and `_inbox/` entirely**: raw chat imports
+  (complete private history) and un-reviewed drafts stay local, never in a remote — the review
+  gate is the safety net.
+- **Autopush uses allowlist staging instead of `git add -A`** and became opt-in: a denylist fails
+  open on every new sensitive folder; the allowlist fails closed, plus a belt-and-braces abort if
+  `chats/`/`_inbox/` ever reach the index.
+- **Dream pass state is short-lived and private**: `dream-work/` date folders are created
+  owner-only (0700) and pruned after 7 days — they can hold real lead names and venture-verdict
+  text.
 
 ## [0.2.0] - 2026-06-24
 
@@ -93,5 +152,6 @@ Initial public release.
 - **Data-free distribution:** ships only the framework plus a handful of generic example notes.
 - **Documentation** under `docs/` (SETUP, CONCEPTS, VAULT, COMMANDS) and a sample dashboard at `docs/examples/os-dashboard.md`.
 
+[0.3.0]: https://keepachangelog.com/en/1.1.0/
 [0.2.0]: https://keepachangelog.com/en/1.1.0/
 [0.1.0]: https://keepachangelog.com/en/1.1.0/

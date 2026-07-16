@@ -96,11 +96,12 @@ machine. No API key is **ever** set; no data leaves the machine.
 
 Links: qmd → https://github.com/tobi/qmd · graphify → https://github.com/safishamsi/graphify · ollama → https://ollama.com
 
-> **Getestet mit / Tested with:** qmd `2.5.x`, graphify `0.8.x`. Die Recall-Hooks parsen qmds
-> Textausgabe (`qmd://…:line #docid` + `Score: NN%`) — bei einem qmd-Major-Update prüfe den
-> Smoke-Test (`python3 install/doctor.py`), falls Recall verstummt. / The recall hooks parse qmd's
-> text output; if a future qmd release changes that format and recall goes quiet, the doctor's
-> smoke test will catch it.
+> **Getestet mit / Tested with:** qmd `2.5.x`, graphify `0.8.x`. Alle Recall-Konsumenten nutzen
+> **einen** geteilten Client (`scripts/qmd_search.py`, `qmd vsearch --format json`) — bei einem
+> qmd-Major-Update prüfe den Smoke-Test (`python3 install/doctor.py`), falls Recall verstummt. /
+> All recall consumers go through **one** shared client (`scripts/qmd_search.py`,
+> `qmd vsearch --format json`); if a future qmd release changes that contract and recall goes
+> quiet, the doctor's smoke test will catch it.
 
 ---
 
@@ -153,11 +154,11 @@ dependencies). The script is idempotent: a second run won't clobber your existin
    ab dem ersten Prompt funktioniert.
 5. **Setzt Env-Variablen** in `settings.json` → `env` (siehe Tabelle unten).
 6. **Optional: nächtlicher graphify-Rebuild** über `launchd` (macOS) bzw. `cron`
-   (Linux), damit der Graph aktuell bleibt.
-7. **Optional: nächtliches Dreaming** (`--schedule-dream`, braucht Ollama) — ein
-   lokaler LLM-Pass, der ausschließlich Vorschläge nach `_inbox/dreams/` schreibt,
-   reviewt via `/dream review`. Läuft 30 Minuten nach dem Graph-Rebuild. Siehe
-   `docs/COMMANDS.md` §3c.
+   (Linux), damit der Graph aktuell bleibt (`--schedule`, 04:15) — und **optional der
+   nächtliche Dreaming-Pass** (`--schedule-dream`, 04:45 — ~30 Minuten nach dem Graph-Rebuild, niedrige Prozess-Priorität). Siehe `docs/COMMANDS.md` §3c.
+7. **Schreibt ein Install-Manifest** (`install-manifest.json` im State-Home) — damit
+   `install.py --check-drift` später „lokal angepasst" von „Update verfügbar"
+   unterscheiden kann.
 
 **Env-Variablen, die der Installer setzt:**
 
@@ -168,16 +169,6 @@ dependencies). The script is idempotent: a second run won't clobber your existin
 | `PERSONAL_OS_LOG_DIR` | XDG-State-Dir / `~/.local/state/personal-os/logs` (macOS evtl. `~/Library/Logs`) | Fire-Log & Diagnose |
 | `PERSONAL_OS_LANG` | `en` (auch `de`) | Sprache der Hook-/Command-Oberfläche |
 | `PERSONAL_OS_DREAM_MODEL` | `llama3.2:3b` | Generierungsmodell für den optionalen Dreaming-Pass |
-
-### ChatGPT-Export importieren (optional, manuell, einmalig)
-
-Wenn du deine Daten von chatgpt.com exportierst (Settings → Data controls → Export), kannst du
-sie in denselben Vault übernehmen: `python3 scripts/chatgpt_to_obsidian.py --zip <export.zip>`.
-Schreibt eine Notiz pro Conversation nach `<vault>/chats/gpt/`, inkrementell (sicher mit einem
-neueren Export erneut ausführbar). Das ist **kein** Teil des Nightly-Schedulers — einmal
-ausführen, wenn ein Export vorliegt. Erwäge, `chats/gpt/` im Vault-Repo zu gitignoren, da eine
-ChatGPT-Historie oft persönlicher ist als Code-Transkripte; `/mine-chats` (das auch `chats/gpt/`
-beobachtet) ist das, was am Ende versioniert werden sollte.
 
 ### EN
 
@@ -191,10 +182,11 @@ beobachtet) ist das, was am Ende versioniert werden sollte.
    very first prompt.
 5. **Sets env vars** in `settings.json` → `env` (see table below).
 6. **Optional: nightly graphify rebuild** via `launchd` (macOS) or `cron` (Linux), so
-   the graph stays current.
-7. **Optional: nightly dreaming** (`--schedule-dream`, requires Ollama) — a local-LLM
-   consolidation pass that writes suggestions only to `_inbox/dreams/`, reviewed via
-   `/dream review`. Runs 30 minutes after the graph rebuild. See `docs/COMMANDS.md` §3c.
+   the graph stays current (`--schedule`, 04:15) — and **optionally the nightly
+   dreaming pass** (`--schedule-dream`, 04:45 — ~30 minutes after the graph rebuild, low process priority). See `docs/COMMANDS.md` §3c.
+7. **Writes an install manifest** (`install-manifest.json` in the state home) — so
+   `install.py --check-drift` can later tell "locally customized" apart from
+   "update available".
 
 **Env vars the installer sets:**
 
@@ -205,16 +197,6 @@ beobachtet) ist das, was am Ende versioniert werden sollte.
 | `PERSONAL_OS_LOG_DIR` | XDG state dir / `~/.local/state/personal-os/logs` (macOS may use `~/Library/Logs`) | fire-log & diagnostics |
 | `PERSONAL_OS_LANG` | `en` (also `de`) | language of the hook/command UI |
 | `PERSONAL_OS_DREAM_MODEL` | `llama3.2:3b` | generation model for the optional dreaming pass |
-
-### Importing a ChatGPT export (optional, manual, one-off)
-
-If you export your data from chatgpt.com (Settings → Data controls → Export), you can pull it
-into the same vault: `python3 scripts/chatgpt_to_obsidian.py --zip <export.zip>`. It writes one
-note per conversation to `<vault>/chats/gpt/`, incrementally (safe to re-run on a newer export).
-This is **not** part of the nightly scheduler — run it once when you have an export. Consider
-gitignoring `chats/gpt/` in your vault repo, since a ChatGPT history is often more personal than
-coding transcripts; `/mine-chats` (which also watches `chats/gpt/`) is what should end up
-versioned.
 
 ---
 
@@ -245,6 +227,110 @@ A 30-second check that the recall hook is alive:
 
 If you see the injected lesson, the recall loop is working. (The hook never blocks — it's
 purely informational.)
+
+---
+
+## 5b. ChatGPT-Historie importieren / Import your ChatGPT history
+
+### DE
+
+Dein ChatGPT-Verlauf enthält oft jahrelange Substanz (Strategie, Recherche, Ideen) — Personal OS
+kann ihn als Mining-Quelle erschließen. Der Import ist **manuell, einmalig pro Export, 100 % lokal**:
+
+1. Export anfordern: chatgpt.com → Settings → Data controls → **Export data**. Du bekommst
+   eine Zip-Datei per Mail (oft 1–2 GB).
+2. Trockenlauf, dann Import (liest die JSON-Shards direkt aus der Zip — kein Entpacken nötig):
+   ```bash
+   python3 ~/.personal-os/scripts/chatgpt_to_obsidian.py --zip ~/Downloads/<export>.zip --dry-run
+   python3 ~/.personal-os/scripts/chatgpt_to_obsidian.py --zip ~/Downloads/<export>.zip
+   ```
+   Eine Markdown-Note pro Conversation landet in `<vault>/chats/gpt/` (Tagging rule-based, $0).
+   Inkrementell: ein erneuter Lauf gegen einen neueren Export schreibt nur das Delta.
+3. Destillieren: `/mine-chats` verarbeitet `chats/code/` **und** `chats/gpt/` in Batches
+   (Default 10) — nur das übertragbare Gold wird zu Lessons/Knowledge/Ideen/Profile-Notizen.
+
+**Privacy:** ChatGPT-Verläufe sind oft persönlicher als Coding-Transkripte (Gesundheit, Finanzen).
+Das Vault-Scaffold gitignored deshalb `chats/` **komplett** (ebenso `_inbox/`) — Roh-Importe
+erreichen nie ein Remote; versioniert werden nur die destillierten, von dir promoteten Notizen.
+
+### EN
+
+Your ChatGPT history often holds years of substance (strategy, research, ideas) — Personal OS can
+tap it as a mining source. The import is **manual, one-off per export, 100% local**:
+
+1. Request the export: chatgpt.com → Settings → Data controls → **Export data**. You'll get a
+   zip by mail (often 1–2 GB).
+2. Dry-run, then import (reads the JSON shards straight out of the zip — no extraction needed):
+   ```bash
+   python3 ~/.personal-os/scripts/chatgpt_to_obsidian.py --zip ~/Downloads/<export>.zip --dry-run
+   python3 ~/.personal-os/scripts/chatgpt_to_obsidian.py --zip ~/Downloads/<export>.zip
+   ```
+   One markdown note per conversation lands in `<vault>/chats/gpt/` (rule-based tagging, $0).
+   Incremental: re-running against a newer export writes only the delta.
+3. Distill: `/mine-chats` processes `chats/code/` **and** `chats/gpt/` in batches (default 10) —
+   only the transferable gold becomes lessons/knowledge/idea/profile notes.
+
+**Privacy:** ChatGPT history is often more personal than coding transcripts (health, finances).
+The vault scaffold therefore gitignores `chats/` **entirely** (and `_inbox/` too) — raw imports
+never reach a remote; only the distilled notes you promote get versioned.
+
+---
+
+## 5c. Vault-Autopush einrichten / Set up vault autopush
+
+### DE
+
+Opt-in: Am Ende jeder Claude-Code-Session (Stop-Hook) und im Nightly wird der Vault committet und
+in **sein eigenes privates** Remote gepusht — Backup binnen Sekunden statt „irgendwann".
+
+**Voraussetzung:** Der Vault ist ein Git-Repo mit Remote (der Installer richtet das bewusst
+NICHT ein — das Remote ist deine Entscheidung):
+
+```bash
+cd ~/vault
+git init
+git remote add origin git@github.com:<you>/<private-vault-repo>.git   # PRIVAT!
+```
+
+Dann beim (Re-)Install aktivieren:
+
+```bash
+./install/install.sh --autopush
+```
+
+**Sicherheitsmodell:** `vault_autopush.sh` staged per **Allowlist** (lessons, knowledge, ideas,
+projects, profile, permanent, logs, `_templates`, `_archive` + Top-Level-`*.md`) statt `git add -A`
+— eine Denylist fällt bei jedem neuen sensiblen Ordner offen, die Allowlist fällt zu. Belt &
+braces: landet doch etwas aus `chats/` oder `_inbox/` im Index, bricht der Sync ab, committet
+nichts. Ohne Remote ist das Skript ein stiller No-op. Deaktivieren: Re-Install ohne `--autopush`
+oder die Stop-Hook-Gruppe aus `settings.json` entfernen.
+
+### EN
+
+Opt-in: at the end of every Claude Code session (Stop hook) and in the nightly, the vault is
+committed and pushed to **its own private** remote — backup within seconds instead of "someday".
+
+**Prerequisite:** the vault is a git repo with a remote (the installer deliberately does NOT set
+this up — the remote is your call):
+
+```bash
+cd ~/vault
+git init
+git remote add origin git@github.com:<you>/<private-vault-repo>.git   # PRIVATE!
+```
+
+Then enable at (re-)install time:
+
+```bash
+./install/install.sh --autopush
+```
+
+**Security model:** `vault_autopush.sh` stages via an **allowlist** (lessons, knowledge, ideas,
+projects, profile, permanent, logs, `_templates`, `_archive` + top-level `*.md`) instead of
+`git add -A` — a denylist fails open on every new sensitive folder, the allowlist fails closed.
+Belt and braces: if anything from `chats/` or `_inbox/` still ends up in the index, the sync
+aborts and commits nothing. Without a remote the script is a silent no-op. Disable: re-install
+without `--autopush`, or remove the Stop-hook group from `settings.json`.
 
 ---
 

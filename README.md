@@ -77,6 +77,34 @@ Two hooks do the work — and this is what no passive notes app gives you:
 
 ---
 
+## Dreaming — the vault consolidates itself overnight
+
+Recall answers "what do I already know about *this*?" Dreaming answers the question nobody asks: "what should I be noticing across everything?" Once a night (opt-in: `--schedule-dream`), a short local pass runs like a mind consolidating memory — and writes **one suggestions note**, nothing else.
+
+The honest mechanics — eight passes, deliberately cheap:
+
+| Pass | What it finds | Inference |
+|---|---|---|
+| `fires` | which lessons fired this week, which run hot, where recall *missed* | none (reads the fire-log) |
+| `producer` | renders cold-outreach drafts from a lead queue **you** fill in yourself | none — pure templating (a model can't invent a real lead's pain point) |
+| `gc-digest` | lesson merge/cross-link candidates | local embeddings (ollama) |
+| `connections` | notes that belong together but never `[[link]]` | qmd vsearch (embeddings, no LLM) |
+| `ventures` | when a brand-new project shares a "shape" with your past done/parked ventures | local embeddings + a transitive similarity check; at most one LLM call to phrase the verdict |
+| `triage` | which review-inbox drafts match your active projects | local embeddings (ollama) |
+| `residue` | "what happened yesterday" digest from logs + new chats | **the only mandatory LLM pass** — one small local model (`llama3.2:3b` by default), hard-capped call count |
+| `report` | assembles whatever fired into the dream note | none |
+
+Guardrails, because an unattended nightly job earns trust or it earns nothing:
+
+- **Suggestions only.** Every output is a checkbox in `<vault>/_inbox/dreams/YYYY-MM-DD-dream.md` (gitignored). Nothing edits, deletes, or promotes a live note. Ever. Producer drafts are text files in `_inbox/producer-drafts/` — a real Gmail draft is only ever created by `/producer review` after a yes, and nothing is ever sent.
+- **Hard caps everywhere** — max notes scanned, max suggestions, max LLM calls, one venture pattern per night. A dream note is a two-minute read, not a second inbox. Pass state is owner-only and pruned after 7 days.
+- **You review with `/dream review`** — each Y/N is recorded and feeds adaptive thresholds: reject a pass's suggestions and it gets stricter and quieter; accept them and it loosens. The engine learns your taste with counters, not ML. Reviews are risk-tiered: trivially-reversible actions (a reciprocal wikilink) run automatically but reported; anything that changes real content needs your yes.
+- **Kill switch:** `touch ~/.claude/personal-os/dream.off`. RAM pre-flight skips the LLM passes on a busy machine; every pass is resumable; the models are unloaded after the run.
+
+Still $0, still local: qmd + ollama are the only inference, no API key exists anywhere in the pipeline.
+
+---
+
 ## What it compounds into over time
 
 This is the part that separates a memory from a notebook. A stateless assistant starts at zero every session forever. Personal OS keeps climbing:
@@ -133,7 +161,16 @@ git clone <repo> && cd personal-os
 
 The installer creates `~/vault`, merges the commands/hooks/skills into `~/.claude` **without clobbering** your existing settings, writes the qmd index config, and builds the first index. Then open Claude Code in **any** project and try `/lesson`, `/save`, `/os`. Verify wiring anytime with `python3 install/doctor.py` (it runs a real recall query end-to-end).
 
-Two things stay opt-in even with `install.sh`: pass `--schedule` for the nightly graph rebuild, and `--schedule-dream` (needs Ollama) for the nightly dreaming pass.
+Optional flags worth knowing:
+
+```bash
+./install/install.sh --schedule        # nightly graph rebuild + index refresh (04:15)
+./install/install.sh --schedule-dream  # nightly dreaming pass (04:45, see above)
+./install/install.sh --autopush        # opt-in: commit+push the vault at session end
+                                       # (allowlist staging — chats/ + _inbox/ can never be pushed;
+                                       #  requires the vault to have its own private git remote)
+python3 install/install.py --check-drift   # later: installed vs repo vs install manifest
+```
 
 ---
 
@@ -149,8 +186,8 @@ Two things stay opt-in even with `install.sh`: pass `--schedule` for the nightly
 | `/mine-chats` | Distill learnings from imported chat transcripts |
 | `/lessons-gc` | Prune cold, stale, and duplicate lessons to keep the store sharp |
 | `/harvest` | Distill lessons & ideas from sessions that ended without `/save`, into a review inbox |
-| `/dream` | Show (or `review`) the optional nightly "dreaming" note — suggestions only, never auto-applied |
-| `/producer` | Show (or `review`) pending cold-outreach text drafts — real Gmail drafts only after a yes |
+| `/dream` | Show the latest overnight dream note; `/dream review` = risk-tiered Y/N through its suggestions |
+| `/producer` | Show (or `review`) pending cold-outreach text drafts — real Gmail drafts only after a yes, never sent |
 
 ---
 
@@ -177,9 +214,9 @@ The repo ships **data-free**: just the framework plus a handful of generic examp
 
 **Can I use my existing Obsidian vault?** Yes — the vault is just an Obsidian-style markdown folder. The installer won't clobber existing `~/.claude` settings; point the index at your own vault if you prefer.
 
-**What if I skip graphify / ollama?** Both are optional. Without graphify you lose structural (graph) recall but keep full semantic recall. Without ollama you lose the dedup pass in `/lessons-gc` and the optional nightly dreaming pass. qmd is the one required dependency.
+**What if I skip graphify / ollama?** Both are optional. Without graphify you lose structural (graph) recall but keep full semantic recall. Without ollama you lose the dedup pass in `/lessons-gc` and the dreaming passes that need embeddings (the LLM-free ones still run). qmd is the one required dependency.
 
-**What's "dreaming"?** An optional third nightly job (`--schedule-dream`) that runs a small local model over the day's changes — condensing yesterday, suggesting `[[wikilinks]]` between notes that never reference each other, flagging lesson merge candidates, ranking your review inbox, spotting when a brand-new project shares a shape with past ventures that didn't work out, and (if you feed it a lead queue yourself) rendering cold-outreach drafts from your own playbooks. It writes one suggestions-only note per night to `_inbox/dreams/` and never touches a live note or sends anything; you review with `/dream review` and `/producer review`. Most of its passes are pure embeddings/graph work with no LLM at all — see `docs/COMMANDS.md` §3c.
+**What's "dreaming"?** An optional third nightly job (`--schedule-dream`) that consolidates the vault while you sleep — condensing yesterday, suggesting `[[wikilinks]]` between notes that never reference each other, flagging lesson merge candidates, ranking your review inbox, spotting when a brand-new project shares a shape with past ventures that didn't work out, and (if you feed it a lead queue yourself) rendering cold-outreach drafts from your own playbooks. It writes one suggestions-only note per night to `_inbox/dreams/` and never touches a live note or sends anything; you review with `/dream review` and `/producer review`. Most of its passes are pure embeddings/graph work with no LLM at all — see the section above and `docs/COMMANDS.md` §3c.
 
 **Can I import my ChatGPT history?** Yes — `scripts/chatgpt_to_obsidian.py --zip <export.zip>` converts a ChatGPT data export into the same vault (`chats/gpt/`), incrementally, so `/mine-chats` can distill it. It's a manual one-off, not part of the nightly scheduler; see `docs/SETUP.md`.
 
