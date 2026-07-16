@@ -23,7 +23,14 @@ vault-scaffold/**
 **/.chat_import_state.json
 **/.chat_mining_state.txt
 **/.chat_mining_state.json
+**/.chatgpt_import_state.json
+**/.chatgpt_mining_state.txt
 **/harvest-queue.jsonl
+**/health.json
+**/dream-cursor.json
+**/dream-embeds.json
+**/dream-feedback.jsonl
+**/install-manifest.json
 
 # --- Live Claude Code state (in case someone runs this inside ~/.claude) -----
 **/history.jsonl

@@ -8,9 +8,26 @@ graphify-out/
 .obsidian/workspace*
 .obsidian/cache
 
+# Raw chat imports (Claude Code AND ChatGPT): your complete private history,
+# potentially incl. health/finances. Never vetted for PII — stays LOCAL, never in a
+# remote. The distilled notes (/mine-chats -> lessons/knowledge/profile) are what
+# gets versioned. (Only the .gitkeep structure markers are re-included.)
+chats/**
+!chats/*/
+!chats/**/.gitkeep
+
+# The ENTIRE review inbox (harvest drafts, dream notes, refs, …): stays LOCAL until
+# you review + promote. Un-reviewed = never in the remote — the review gate is the
+# safety net. (Only the .gitkeep structure markers are re-included.)
+_inbox/**
+!_inbox/*/
+!_inbox/**/.gitkeep
+
 # Personal OS runtime state
 .chat_import_state.json
 .chat_mining_state.txt
+.chatgpt_import_state.json
+.chatgpt_mining_state.txt
 
 # OS noise
 .DS_Store

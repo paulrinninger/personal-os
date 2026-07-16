@@ -8,7 +8,7 @@ Incremental and sparing.
 
 > **Prerequisite — import the transcripts first.** `/mine-chats` reads from `~/vault/chats/code/`,
 > which is populated by `claude_to_obsidian.py`. That import is **OFF by default** (it copies ALL your
-> Claude Code transcripts into the vault — a privacy choice; they stay local and `chats/` is gitignored).
+> Claude Code transcripts into the vault — a privacy choice; they stay local: the vault scaffold's `.gitignore` now excludes `chats/` entirely, so raw transcripts never reach a remote).
 > Run it manually whenever you want fresh material:
 > ```bash
 > python3 ~/.personal-os/scripts/claude_to_obsidian.py        # or your scripts dir
