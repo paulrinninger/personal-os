@@ -67,6 +67,24 @@ S = {
         "title": "PERSONAL-OS DOCTOR",
         "recall": "Recall hooks firing", "recall_none": "no recall yet — submit a prompt to start",
         "recall_7d": "{} hits / 7d (total {})", "recall_stale": "no hits in 7d",
+        "misses": "Recall misses (7d)",
+        "misses_x": "{} zero-hit · {} timeout · {} error",
+        "misses_hint": " — many timeouts: qmd cold start?",
+        "steps": "Nightly steps: {}", "steps_fail": "failed: {}", "steps_ok": "{} steps green",
+        "steps_none": "no health.json yet (nightly jobs not scheduled/run — optional)",
+        "refs": "Refs queue", "refs_n": "{} cards",
+        "refs_over": "{} cards — >150, review the inbox before adding more",
+        "mining": "Chat mining", "mining_none": "no chat imports (optional)",
+        "mining_n": "{} chats not yet mined",
+        "mining_over": "{} chats not yet mined — run /mine-chats (batches of 10)",
+        "dreamnotes": "Dream notes", "dreamnotes_n": "{} unreviewed",
+        "dreamnotes_over": "{} unreviewed — run /dream review",
+        "dream": "Dreaming (nightly)", "dream_none": "not scheduled (optional)",
+        "dream_off": "disabled via dream.off (intentional)",
+        "dream_age": "last activity {}h ago",
+        "autopush": "Vault autopush", "autopush_off": "not enabled (optional)",
+        "autopush_ok": "Stop hook wired, vault remote configured",
+        "autopush_noremote": "Stop hook wired but the vault has NO git remote — nothing can be pushed",
         "script": "Script: {}", "missing": "MISSING",
         "settings": "settings.json wires hooks", "settings_bad": "hook reference missing",
         "qmd": "qmd index fresh", "qmd_none": "not built yet (run: qmd update && qmd embed)",
@@ -85,15 +103,30 @@ S = {
         "queue_wait": "{} session(s) waiting → /harvest",
         "inbox": "Inbox drafts", "inbox_none": "none open",
         "inbox_n": "{} draft(s) → /harvest review",
-        "dream": "Dreaming (nightly)", "dream_none": "not scheduled (optional)",
-        "dream_off": "disabled via dream.off (intentional)",
-        "dream_age": "last activity {}h ago",
         "verdict": "{}: {} FAIL · {} WARN · {} OK",
     },
     "de": {
         "title": "PERSONAL-OS DOCTOR",
         "recall": "Recall-Hooks feuern", "recall_none": "noch kein Recall — einen Prompt absetzen",
         "recall_7d": "{} Treffer / 7d (gesamt {})", "recall_stale": "keine Treffer in 7d",
+        "misses": "Recall-Misses (7d)",
+        "misses_x": "{} zero-hit · {} Timeout · {} Fehler",
+        "misses_hint": " — viele Timeouts: qmd-Cold-Start?",
+        "steps": "Nightly-Steps: {}", "steps_fail": "fehlgeschlagen: {}", "steps_ok": "{} Steps grün",
+        "steps_none": "noch keine health.json (Nightly-Jobs nicht geplant/gelaufen — optional)",
+        "refs": "Refs-Queue", "refs_n": "{} Karten",
+        "refs_over": "{} Karten — >150, erst die Inbox reviewen",
+        "mining": "Chat-Mining", "mining_none": "keine Chat-Importe (optional)",
+        "mining_n": "{} Chats unvermint",
+        "mining_over": "{} Chats unvermint — /mine-chats fahren (Batches à 10)",
+        "dreamnotes": "Traum-Notizen", "dreamnotes_n": "{} unreviewt",
+        "dreamnotes_over": "{} unreviewt — /dream review fahren",
+        "dream": "Dreaming (nightly)", "dream_none": "nicht geplant (optional)",
+        "dream_off": "per dream.off deaktiviert (bewusst)",
+        "dream_age": "letzte Aktivität vor {}h",
+        "autopush": "Vault-Autopush", "autopush_off": "nicht aktiviert (optional)",
+        "autopush_ok": "Stop-Hook verdrahtet, Vault-Remote konfiguriert",
+        "autopush_noremote": "Stop-Hook verdrahtet, aber der Vault hat KEIN git-Remote — nichts kann gepusht werden",
         "script": "Script: {}", "missing": "FEHLT",
         "settings": "settings.json verdrahtet Hooks", "settings_bad": "Hook-Referenz fehlt",
         "qmd": "qmd-Index frisch", "qmd_none": "noch nicht gebaut (qmd update && qmd embed)",
@@ -112,9 +145,6 @@ S = {
         "queue_wait": "{} Session(s) warten → /harvest",
         "inbox": "Inbox-Drafts", "inbox_none": "keine offen",
         "inbox_n": "{} Draft(s) → /harvest review",
-        "dream": "Dreaming (nightly)", "dream_none": "nicht geplant (optional)",
-        "dream_off": "per dream.off deaktiviert (bewusst)",
-        "dream_age": "letzte Aktivität vor {}h",
         "verdict": "{}: {} FAIL · {} WARN · {} OK",
     },
 }
@@ -139,21 +169,38 @@ def age_h(path):
         return None
 
 
-# 1) recall hooks firing (fire-log fresh) — WARN (never FAIL) on a fresh install
+# 1) recall hooks firing (fire-log fresh) — WARN (never FAIL) on a fresh install.
+#    Miss records (type != "hit": zero/timeout/error/no_qmd) are counted separately —
+#    they are searches that surfaced nothing, not recalls.
 fire = os.path.join(PO, "lesson-fires.jsonl")
 if os.path.exists(fire):
     total = d7 = 0
+    miss7 = {"zero": 0, "timeout": 0, "error": 0, "no_qmd": 0}
     for line in open(fire, encoding="utf-8", errors="replace"):
         if not line.strip():
             continue
-        total += 1
         try:
-            if (NOW - dt.datetime.fromisoformat(json.loads(line).get("ts", ""))).days <= 7:
-                d7 += 1
+            r = json.loads(line)
+            recent = (NOW - dt.datetime.fromisoformat(r.get("ts", ""))).days <= 7
         except Exception:
-            pass
+            continue
+        typ = r.get("type", "hit")
+        if typ == "hit":
+            total += 1
+            if recent:
+                d7 += 1
+        elif recent and typ in miss7:
+            miss7[typ] += 1
     add("PASS" if d7 else "WARN", t("recall"),
         t("recall_7d").format(d7, total) if d7 else t("recall_stale"))
+    searched = d7 + miss7["zero"]
+    hard_misses = miss7["timeout"] + miss7["error"] + miss7["no_qmd"]
+    if searched + hard_misses:
+        st = "WARN" if hard_misses > max(3, (searched + hard_misses) // 5) else "PASS"
+        add(st, t("misses"),
+            t("misses_x").format(miss7["zero"], miss7["timeout"],
+                                 miss7["error"] + miss7["no_qmd"])
+            + (t("misses_hint") if st == "WARN" else ""))
 else:
     add("WARN", t("recall"), t("recall_none"))
 
@@ -233,13 +280,51 @@ hq = os.path.join(PO, "harvest-queue.jsonl")
 n = sum(1 for l in open(hq, encoding="utf-8", errors="replace") if l.strip()) if os.path.exists(hq) else 0
 add("PASS" if n == 0 else "WARN", t("queue"), t("queue_empty") if n == 0 else t("queue_wait").format(n))
 
-# 10) inbox drafts reviewed (dreams/ has its own /dream review lifecycle — don't double-count)
+# 10) inbox drafts reviewed (dreams/ + refs/ have their own checks below — don't nag twice)
 inbox = [p for p in glob.glob(os.path.join(VAULT, "_inbox", "**", "*.md"), recursive=True)
-         if os.sep + "dreams" + os.sep not in p]
+         if os.sep + "dreams" + os.sep not in p and os.sep + "refs" + os.sep not in p]
 add("PASS" if not inbox else "WARN", t("inbox"),
     t("inbox_none") if not inbox else t("inbox_n").format(len(inbox)))
 
-# 11) dreaming ran — optional, INFO if never configured, never FAIL
+# 11) nightly job steps from health.json — the formerly silent per-step failures
+try:
+    hj = json.load(open(os.path.join(PO, "health.json"), encoding="utf-8"))
+    for jname, j in sorted((hj.get("jobs") or {}).items()):
+        bad = [s["name"] for s in j.get("steps", []) if s.get("rc")]
+        if bad:
+            add("WARN", t("steps").format(jname),
+                t("steps_fail").format(", ".join(bad[:4])
+                                       + (" (+{})".format(len(bad) - 4) if len(bad) > 4 else "")))
+        elif j.get("steps"):
+            add("PASS", t("steps").format(jname), t("steps_ok").format(len(j["steps"])))
+except Exception:
+    add("INFO", t("steps").format("-"), t("steps_none"))
+
+# 12) refs queue below the backpressure threshold (only meaningful if the dir exists)
+refs = [p for p in glob.glob(os.path.join(VAULT, "_inbox", "refs", "*.md"))
+        if not os.path.basename(p).startswith(("_INDEX", "_DIGEST"))]
+add("PASS" if len(refs) <= 150 else "WARN", t("refs"),
+    t("refs_n").format(len(refs)) if len(refs) <= 150 else t("refs_over").format(len(refs)))
+
+# 13) chat-mining backlog (imported but never distilled — invisible backlogs stall silently)
+def _mining_backlog(sub, state_file):
+    try:
+        mined = sum(1 for l in open(os.path.join(VAULT, state_file),
+                                    encoding="utf-8", errors="replace") if l.strip())
+    except Exception:
+        mined = 0
+    return max(0, len(glob.glob(os.path.join(VAULT, "chats", sub, "*.md"))) - mined)
+
+n_chats = len(glob.glob(os.path.join(VAULT, "chats", "*", "*.md")))
+if n_chats == 0:
+    add("INFO", t("mining"), t("mining_none"))
+else:
+    backlog = _mining_backlog("code", ".chat_mining_state.txt") \
+        + _mining_backlog("gpt", ".chatgpt_mining_state.txt")
+    add("PASS" if backlog <= 30 else "WARN", t("mining"),
+        t("mining_n").format(backlog) if backlog <= 30 else t("mining_over").format(backlog))
+
+# 14) dreaming ran — optional, INFO if never configured or intentionally off, never FAIL
 if os.path.exists(os.path.join(PO, "dream.off")):
     add("INFO", t("dream"), t("dream_off"))
 else:
@@ -253,6 +338,35 @@ else:
         best = min(candidates)
         add("PASS" if best < 36 else "WARN", t("dream"), t("dream_age").format(int(best)))
 
+# 15) unreviewed dream notes (status: draft) — only if dreaming produced any
+dream_drafts = 0
+for p in glob.glob(os.path.join(VAULT, "_inbox", "dreams", "*.md")):
+    try:
+        if "status: draft" in open(p, encoding="utf-8", errors="replace").read(400):
+            dream_drafts += 1
+    except Exception:
+        pass
+if glob.glob(os.path.join(VAULT, "_inbox", "dreams", "*.md")):
+    add("PASS" if dream_drafts <= 7 else "WARN", t("dreamnotes"),
+        t("dreamnotes_n").format(dream_drafts) if dream_drafts <= 7
+        else t("dreamnotes_over").format(dream_drafts))
+
+# 16) vault autopush (opt-in): Stop hook wired -> the vault needs a git remote
+try:
+    sblob = open(os.path.join(CLAUDE_DIR, "settings.json"), encoding="utf-8").read()
+except Exception:
+    sblob = ""
+if "vault_autopush.sh" in sblob:
+    try:
+        remotes = subprocess.run(["git", "-C", VAULT, "remote"],
+                                 capture_output=True, text=True, timeout=10).stdout.strip()
+    except Exception:
+        remotes = ""
+    add("PASS" if remotes else "WARN", t("autopush"),
+        t("autopush_ok") if remotes else t("autopush_noremote"))
+else:
+    add("INFO", t("autopush"), t("autopush_off"))
+
 # --- report ---
 ICON = {"PASS": "✓", "WARN": "⚠", "FAIL": "✗", "INFO": "·"}
 fails = [c for c in checks if c[0] == "FAIL"]
@@ -263,4 +377,15 @@ for st, name, detail in checks:
     print("  {} {}".format(ICON[st], name) + (" — {}".format(detail) if detail else ""))
 verdict = "FAIL" if fails else ("WARN" if warns else "OK")
 print("\n  → " + t("verdict").format(verdict, len(fails), len(warns), len(oks)))
+
+# Mirror the verdict into health.json (a FAIL triggers the once-per-day notification
+# there). Fail-open: a missing pos_health must never break the doctor itself.
+try:
+    if SCRIPTS_DIR not in sys.path:
+        sys.path.insert(0, SCRIPTS_DIR)
+    import pos_health
+    pos_health.cmd_doctor_record(verdict, str(len(fails)), str(len(warns)), str(len(oks)))
+except Exception:
+    pass
+
 sys.exit(1 if fails else 0)

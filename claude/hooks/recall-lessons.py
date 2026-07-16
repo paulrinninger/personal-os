@@ -8,18 +8,22 @@ mistakes get surfaced WITHOUT relying on Claude remembering to query them.
 
 Quiet by design: prints nothing unless there is a real lesson match.
 
+Parsing + fire-log go through the shared modules qmd_search.py (JSON mode — one
+parser instead of four divergent ones) and pos_utils.py from the installed scripts
+dir. Misses are logged too (`type`: hit|zero|timeout|error|no_qmd) — only that makes
+recall precision and the cold-start timeout rate measurable at all (/os doctor,
+dream fires pass).
+
 Config (all optional, set by the installer into settings.json `env`):
-  PERSONAL_OS_VAULT     vault location for display paths   (default ~/vault)
-  PERSONAL_OS_LOG_DIR   debug log dir   (default $XDG_STATE_HOME/personal-os/logs)
-  PERSONAL_OS_HOME      dir holding lesson-fires.jsonl  (default ~/.claude/personal-os)
-  PERSONAL_OS_LANG      en | de   (default en)  — language of the injected note
+  PERSONAL_OS_VAULT        vault location for display paths   (default ~/vault)
+  PERSONAL_OS_SCRIPTS_DIR  where qmd_search.py/pos_utils.py live
+                                              (default ~/.personal-os/scripts)
+  PERSONAL_OS_LOG_DIR      debug log dir   (default $XDG_STATE_HOME/personal-os/logs)
+  PERSONAL_OS_HOME         dir holding lesson-fires.jsonl  (default ~/.claude/personal-os)
+  PERSONAL_OS_LANG         en | de   (default en)  — language of the injected note
 """
-import datetime
 import json
 import os
-import re
-import shutil
-import subprocess
 import sys
 
 VAULT_DISPLAY = os.environ.get("PERSONAL_OS_VAULT", "~/vault").rstrip("/")
@@ -27,8 +31,18 @@ LANG = (os.environ.get("PERSONAL_OS_LANG", "en") or "en").lower()[:2]
 SCORE_THRESHOLD = int(os.environ.get("PERSONAL_OS_SCORE", "58"))  # vector-sim %, below = silent
 MAX_LESSONS = 3
 MIN_PROMPT_LEN = 12    # skip "ok", "ja", trivial acks
-SEARCH_MODE = "vsearch"  # semantic, local model, no API ($0)
-SEARCH_TIMEOUT = 9       # s; warm ~2s, cold-start (model load) may exceed -> skip
+SEARCH_TIMEOUT = 9     # s; warm ~2s, cold-start (model load) may exceed -> miss-log
+
+# Shared modules live in the installed scripts dir (the installer wires
+# PERSONAL_OS_SCRIPTS_DIR into the hook command line; the fallback is the
+# installer's default scripts dir).
+sys.path.insert(0, os.path.expanduser(
+    os.environ.get("PERSONAL_OS_SCRIPTS_DIR", "~/.personal-os/scripts")))
+try:
+    import pos_utils
+    import qmd_search
+except Exception:
+    pos_utils = qmd_search = None
 
 
 def _personal_os_home():
@@ -86,59 +100,36 @@ def main():
     prompt = (data.get("prompt") or "").strip()
     if len(prompt) < MIN_PROMPT_LEN:
         return
+    if qmd_search is None:
+        return log("shared modules (qmd_search/pos_utils) not importable — recall off; "
+                   "check PERSONAL_OS_SCRIPTS_DIR")
     query = prompt.replace("\n", " ")[:300]
+    snippet60 = prompt[:60].replace("\n", " ")
 
-    qmd = shutil.which("qmd")
-    if not qmd:
+    def miss(mtype, extra=None):
+        rec = {"type": mtype, "trigger": "UserPromptSubmit", "prompt": snippet60}
+        if extra:
+            rec.update(extra)
+        pos_utils.fire_log_append(rec, fire_log=FIRE_LOG)
+
+    res = qmd_search.vsearch(query, n=8, timeout=SEARCH_TIMEOUT)
+    if res["outcome"] != "ok":
+        miss(res["outcome"], {"error": res["error"]})
         return
-    try:
-        out = subprocess.run(
-            [qmd, SEARCH_MODE, query],
-            capture_output=True, text=True, timeout=SEARCH_TIMEOUT,
-        ).stdout
-    except Exception:
-        return
-
-    # Parse qmd blocks:  qmd://<path>:<line> #<docid> / Score: N% / snippet
-    # IMPORTANT: reset on EVERY qmd:// header (not just lessons), otherwise a
-    # following ideas/knowledge/logs block leaks its Score into the lesson.
-    matches, cur = [], None
-    head = re.compile(r"^qmd://([^\s:]+):(\d+)\s+#(\S+)")
-
-    def flush(c):
-        if c and c["path"].startswith("lessons/"):
-            matches.append(c)
-
-    for line in out.splitlines():
-        m = head.match(line)
-        if m:
-            flush(cur)
-            cur = {"path": m.group(1), "docid": m.group(3), "score": 0, "snippet": ""}
-            continue
-        if cur is None:
-            continue
-        ms = re.match(r"^Score:\s+(\d+)", line)
-        if ms:
-            cur["score"] = int(ms.group(1))
-            continue
-        s = line.strip()
-        if s and not cur["snippet"] and not s.startswith("@@") \
-                and not s.startswith("Title:") and not s.startswith("##"):
-            if s.startswith("- ") or len(s) > 8:
-                cur["snippet"] = s[:200]
-    flush(cur)
 
     # Dedup by path (highest score wins), threshold, top N
+    lessons = [h for h in res["hits"] if h["path"].startswith("lessons/")]
     best = {}
-    for mm in matches:
-        p = mm["path"]
-        if p not in best or mm["score"] > best[p]["score"]:
-            best[p] = mm
+    for h in lessons:
+        p = h["path"]
+        if p not in best or h["score"] > best[p]["score"]:
+            best[p] = h
     sel = sorted(
-        (m for m in best.values() if m["score"] >= SCORE_THRESHOLD),
+        (h for h in best.values() if h["score"] >= SCORE_THRESHOLD),
         key=lambda x: -x["score"],
     )[:MAX_LESSONS]
     if not sel:
+        miss("zero", {"top_score": max((h["score"] for h in lessons), default=0)})
         return
 
     lines = [t("header")]
@@ -160,18 +151,11 @@ def main():
         len(sel), sel[0]["path"], sel[0]["score"]))
 
     # Measure loop: one append-only line per injected lesson (powers /os + /lessons-gc).
-    try:
-        ts = datetime.datetime.now().isoformat(timespec="seconds")
-        os.makedirs(os.path.dirname(FIRE_LOG), exist_ok=True)
-        snippet = prompt[:60].replace("\n", " ")
-        with open(FIRE_LOG, "a", encoding="utf-8") as f:
-            for m in sel:
-                f.write(json.dumps({
-                    "ts": ts, "path": m["path"], "score": m["score"],
-                    "trigger": "UserPromptSubmit", "prompt": snippet,
-                }, ensure_ascii=False) + "\n")
-    except Exception:
-        pass
+    for m in sel:
+        pos_utils.fire_log_append({
+            "type": "hit", "path": m["path"], "score": m["score"],
+            "trigger": "UserPromptSubmit", "prompt": snippet60,
+        }, fire_log=FIRE_LOG)
 
 
 if __name__ == "__main__":

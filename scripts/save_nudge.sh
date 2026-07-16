@@ -56,4 +56,8 @@ if [ ! -f "$MARK" ]; then
     printf '{"systemMessage":"%s"}\n' "$MSG"
   fi
 fi
+
+# Housekeeping: drop once-per-session marker files older than 7 days so the temp dir
+# doesn't accumulate one file per session forever.
+find "${TMPDIR:-/tmp}" -maxdepth 1 \( -name 'personal-os-harvest-enq-*' -o -name 'personal-os-save-nudge-*' -o -name 'personal-os-health-sentinel-*' \) -mtime +7 -delete 2>/dev/null
 exit 0

@@ -48,6 +48,13 @@ KEYWORD_TAG_MAP = {
 def log(*a):
     print(*a, file=sys.stderr, flush=True)
 
+def save_state(state: dict) -> None:
+    """Atomic state write (tmp + os.replace) — an interrupt mid-write must never
+    leave a torn JSON behind, or every future run would re-import everything."""
+    tmp = STATE_FILE.with_name(STATE_FILE.name + ".tmp")
+    tmp.write_text(json.dumps(state, indent=0))
+    os.replace(tmp, STATE_FILE)
+
 def slugify(text: str, maxlen: int = 48) -> str:
     s = re.sub(r"[^a-z0-9]+", "-", (text or "").lower()).strip("-")
     return (s[:maxlen].strip("-")) or "session"
@@ -246,7 +253,7 @@ def main():
         state[sid] = mtime
         written += 1
     if not args.dry_run:
-        STATE_FILE.write_text(json.dumps(state, indent=0))
+        save_state(state)
     log(f"done: {written} written, {unchanged} unchanged, {skipped} skipped (no human prompt). out={OUT_DIR}")
     return 0
 

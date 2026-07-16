@@ -113,6 +113,8 @@ def load_fires():
             r = json.loads(line)
         except Exception:
             continue
+        if r.get("type", "hit") != "hit":  # miss records (zero/timeout/error) are not fires
+            continue
         p = r.get("path")
         if not p:
             continue

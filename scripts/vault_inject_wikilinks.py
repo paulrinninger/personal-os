@@ -73,6 +73,11 @@ for root, dirs, files in os.walk(vault):
             added += 1
 
 g["links"] = links
-json.dump(g, open(gpath, "w"), ensure_ascii=False)
+# Atomic write (tmp + os.replace): a crash mid-dump must never tear graph.json apart —
+# a torn graph silently breaks every `graphify query` until the next full rebuild.
+tmp = gpath + ".tmp"
+with open(tmp, "w") as f:
+    json.dump(g, f, ensure_ascii=False)
+os.replace(tmp, gpath)
 print(f"OK: {added} wikilink edges injected ({removed} stale removed, "
       f"{unresolved} unresolved targets, {len(name_to_id)} note nodes). $0.")

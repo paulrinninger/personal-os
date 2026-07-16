@@ -22,6 +22,9 @@ collections:
   ideas:
     path: ${VAULT}/ideas
     pattern: "**/*.md"
+  permanent:
+    path: ${VAULT}/permanent
+    pattern: "**/*.md"
   logs:
     path: ${VAULT}/logs
     pattern: "**/*.md"

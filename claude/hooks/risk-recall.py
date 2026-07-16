@@ -4,21 +4,21 @@
 Second tier of the Personal-OS recall loop. The UserPromptSubmit hook catches
 intent at prompt time; this catches the *action moment* — the irreversible or
 outward steps where a repeated mistake actually costs something:
-  - Bash: git push/--force, rm -rf, reset --hard, deploy/vercel, db drop/delete, …
+  - Bash: git push/commit, stage-all (add -A/.), --force, rm -rf, reset --hard,
+    deploy/vercel, db drop/delete, …
   - Mail/MCP: create_draft / send_message / send_email / …
 
 Semantic recall via `qmd vsearch` (local, $0). Injects matching lessons as
 PreToolUse additionalContext (informational — never blocks). Quiet otherwise.
 Shares the fire-log with the prompt-time hook (trigger marks which tier fired).
+Parsing + fire-log go through the shared modules qmd_search.py/pos_utils.py;
+misses (timeout/zero/error) are logged too, so coverage gaps become measurable.
 
 Config: see recall-lessons.py (same PERSONAL_OS_* env vars).
 """
-import datetime
 import json
 import os
 import re
-import shutil
-import subprocess
 import sys
 
 VAULT_DISPLAY = os.environ.get("PERSONAL_OS_VAULT", "~/vault").rstrip("/")
@@ -26,6 +26,14 @@ LANG = (os.environ.get("PERSONAL_OS_LANG", "en") or "en").lower()[:2]
 SCORE_THRESHOLD = int(os.environ.get("PERSONAL_OS_SCORE", "58"))
 MAX_LESSONS = 3
 SEARCH_TIMEOUT = 9
+
+sys.path.insert(0, os.path.expanduser(
+    os.environ.get("PERSONAL_OS_SCRIPTS_DIR", "~/.personal-os/scripts")))
+try:
+    import pos_utils
+    import qmd_search
+except Exception:
+    pos_utils = qmd_search = None
 
 
 def _personal_os_home():
@@ -113,50 +121,33 @@ def main():
     query, label = extract_query(data)
     if not query:
         return
+    if qmd_search is None:
+        return log("shared modules (qmd_search/pos_utils) not importable — recall off; "
+                   "check PERSONAL_OS_SCRIPTS_DIR")
 
-    qmd = shutil.which("qmd")
-    if not qmd:
+    trigger = "PreToolUse:" + label
+
+    def miss(mtype, extra=None):
+        rec = {"type": mtype, "trigger": trigger, "prompt": query[:60]}
+        if extra:
+            rec.update(extra)
+        pos_utils.fire_log_append(rec, fire_log=FIRE_LOG)
+
+    res = qmd_search.vsearch(query, n=8, timeout=SEARCH_TIMEOUT)
+    if res["outcome"] != "ok":
+        miss(res["outcome"], {"error": res["error"]})
         return
-    try:
-        out = subprocess.run([qmd, "vsearch", query],
-                             capture_output=True, text=True, timeout=SEARCH_TIMEOUT).stdout
-    except Exception:
-        return
 
-    matches, cur = [], None
-    head = re.compile(r"^qmd://([^\s:]+):(\d+)\s+#(\S+)")
-
-    def flush(c):
-        if c and c["path"].startswith("lessons/"):
-            matches.append(c)
-
-    for line in out.splitlines():
-        m = head.match(line)
-        if m:
-            flush(cur)
-            cur = {"path": m.group(1), "docid": m.group(3), "score": 0, "snippet": ""}
-            continue
-        if cur is None:
-            continue
-        ms = re.match(r"^Score:\s+(\d+)", line)
-        if ms:
-            cur["score"] = int(ms.group(1))
-            continue
-        s = line.strip()
-        if s and not cur["snippet"] and not s.startswith("@@") \
-                and not s.startswith("Title:") and not s.startswith("##"):
-            if s.startswith("- ") or len(s) > 8:
-                cur["snippet"] = s[:200]
-    flush(cur)
-
+    lessons = [h for h in res["hits"] if h["path"].startswith("lessons/")]
     best = {}
-    for mm in matches:
-        p = mm["path"]
-        if p not in best or mm["score"] > best[p]["score"]:
-            best[p] = mm
-    sel = sorted((m for m in best.values() if m["score"] >= SCORE_THRESHOLD),
+    for h in lessons:
+        p = h["path"]
+        if p not in best or h["score"] > best[p]["score"]:
+            best[p] = h
+    sel = sorted((h for h in best.values() if h["score"] >= SCORE_THRESHOLD),
                  key=lambda x: -x["score"])[:MAX_LESSONS]
     if not sel:
+        miss("zero", {"top_score": max((h["score"] for h in lessons), default=0)})
         return
 
     lines = [t("header").format(label)]
@@ -175,17 +166,11 @@ def main():
     }))
     log("injected {} lesson(s) before {}; top={} score={}".format(
         len(sel), label, sel[0]["path"], sel[0]["score"]))
-    try:
-        ts = datetime.datetime.now().isoformat(timespec="seconds")
-        os.makedirs(os.path.dirname(FIRE_LOG), exist_ok=True)
-        with open(FIRE_LOG, "a", encoding="utf-8") as f:
-            for m in sel:
-                f.write(json.dumps({
-                    "ts": ts, "path": m["path"], "score": m["score"],
-                    "trigger": "PreToolUse:" + label, "prompt": query[:60],
-                }, ensure_ascii=False) + "\n")
-    except Exception:
-        pass
+    for m in sel:
+        pos_utils.fire_log_append({
+            "type": "hit", "path": m["path"], "score": m["score"],
+            "trigger": trigger, "prompt": query[:60],
+        }, fire_log=FIRE_LOG)
 
 
 if __name__ == "__main__":

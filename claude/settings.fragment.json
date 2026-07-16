@@ -6,6 +6,7 @@
     "PERSONAL_OS_LOG_DIR": "${PERSONAL_OS_LOG_DIR}",
     "PERSONAL_OS_HOME": "${PERSONAL_OS_HOME}",
     "PERSONAL_OS_OLLAMA": "${PERSONAL_OS_OLLAMA}",
+    "PERSONAL_OS_DREAM_MODEL": "${PERSONAL_OS_DREAM_MODEL}",
     "PERSONAL_OS_LANG": "${PERSONAL_OS_LANG}"
   },
   "permissions": {
@@ -16,12 +17,24 @@
     ]
   },
   "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PERSONAL_OS_HOME=\"${PERSONAL_OS_HOME}\" PERSONAL_OS_SCRIPTS_DIR=\"${PERSONAL_OS_SCRIPTS_DIR}\" python3 \"${PERSONAL_OS_CLAUDE_DIR}/hooks/health-sentinel.py\" 2>/dev/null || true",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
     "UserPromptSubmit": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${PERSONAL_OS_CLAUDE_DIR}/hooks/recall-lessons.py\" 2>/dev/null || true",
+            "command": "PERSONAL_OS_SCRIPTS_DIR=\"${PERSONAL_OS_SCRIPTS_DIR}\" python3 \"${PERSONAL_OS_CLAUDE_DIR}/hooks/recall-lessons.py\" 2>/dev/null || true",
             "timeout": 12,
             "statusMessage": "Checking vault lessons…"
           }
@@ -34,7 +47,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${PERSONAL_OS_CLAUDE_DIR}/hooks/risk-recall.py\" 2>/dev/null || true",
+            "command": "PERSONAL_OS_SCRIPTS_DIR=\"${PERSONAL_OS_SCRIPTS_DIR}\" python3 \"${PERSONAL_OS_CLAUDE_DIR}/hooks/risk-recall.py\" 2>/dev/null || true",
             "timeout": 12,
             "statusMessage": "Checking risk lessons…"
           }
@@ -45,7 +58,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${PERSONAL_OS_CLAUDE_DIR}/hooks/risk-recall.py\" 2>/dev/null || true",
+            "command": "PERSONAL_OS_SCRIPTS_DIR=\"${PERSONAL_OS_SCRIPTS_DIR}\" python3 \"${PERSONAL_OS_CLAUDE_DIR}/hooks/risk-recall.py\" 2>/dev/null || true",
             "timeout": 12,
             "statusMessage": "Checking risk lessons…"
           }
@@ -78,11 +91,6 @@
             "type": "command",
             "command": "/bin/sh \"${PERSONAL_OS_SCRIPTS_DIR}/save_nudge.sh\" 2>/dev/null || true",
             "timeout": 10
-          },
-          {
-            "type": "command",
-            "command": "/bin/sh \"${PERSONAL_OS_SCRIPTS_DIR}/vault_autopush.sh\" 2>/dev/null || true",
-            "timeout": 20
           }
         ]
       }
