@@ -1,0 +1,26 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: install pytest
+        run: pip install pytest
+
+      # jq is preinstalled on ubuntu runners (needed by the save_nudge.sh tests;
+      # they self-skip if it's ever missing).
+      - name: run test suite
+        run: pytest -q
