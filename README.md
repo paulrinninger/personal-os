@@ -79,7 +79,7 @@ Two hooks do the work — and this is what no passive notes app gives you:
 
 ## Dreaming — the vault consolidates itself overnight
 
-Recall answers "what do I already know about *this*?" Dreaming answers the question nobody asks: "what should I be noticing across everything?" Once a night (opt-in: `--schedule-dream`), a short local pass runs like a mind consolidating memory — and writes **one suggestions note**, nothing else.
+Recall answers "what do I already know about *this*?" Dreaming answers the question nobody asks: "what should I be noticing across everything?" Once a night (opt-in: `--schedule-dream`), a short local pass runs like a mind consolidating memory — computes across the whole vault, lets the autopilot execute the low-risk share (next section), and writes **one night-journal note**, nothing else.
 
 The honest mechanics — eight passes, deliberately cheap:
 
@@ -92,16 +92,44 @@ The honest mechanics — eight passes, deliberately cheap:
 | `ventures` | when a brand-new project shares a "shape" with your past done/parked ventures | local embeddings + a transitive similarity check; at most one LLM call to phrase the verdict |
 | `triage` | which review-inbox drafts match your active projects | local embeddings (ollama) |
 | `residue` | "what happened yesterday" digest from logs + new chats | **the only mandatory LLM pass** — one small local model (`llama3.2:3b` by default), hard-capped call count |
-| `report` | assembles whatever fired into the dream note | none |
+| `report` | assembles the night journal: executed actions first, then whatever else fired | none |
 
 Guardrails, because an unattended nightly job earns trust or it earns nothing:
 
-- **Suggestions only.** Every output is a checkbox in `<vault>/_inbox/dreams/YYYY-MM-DD-dream.md` (gitignored). Nothing edits, deletes, or promotes a live note. Ever. Producer drafts are text files in `_inbox/producer-drafts/` — a real Gmail draft is only ever created by `/producer review` after a yes, and nothing is ever sent.
+- **Passes never edit live notes.** The passes only compute; execution is a separate, journaled layer (the autopilot, below) with hard rules about what it may touch. Producer drafts are text files in `_inbox/producer-drafts/` — a real Gmail draft is only ever created by `/producer review` after a yes, and nothing is ever sent.
 - **Hard caps everywhere** — max notes scanned, max suggestions, max LLM calls, one venture pattern per night. A dream note is a two-minute read, not a second inbox. Pass state is owner-only and pruned after 7 days.
-- **You review with `/dream review`** — each Y/N is recorded and feeds adaptive thresholds: reject a pass's suggestions and it gets stricter and quieter; accept them and it loosens. The engine learns your taste with counters, not ML. Reviews are risk-tiered: trivially-reversible actions (a reciprocal wikilink) run automatically but reported; anything that changes real content needs your yes.
+- **Feedback without a ritual** — every `/undo` counts as *rejected*, and a nightly scanner scores what you silently *did* with the artifacts (kept a link two weeks = accepted; removed it = rejected). That feeds the same adaptive thresholds as before: counters, not ML.
 - **Kill switch:** `touch ~/.claude/personal-os/dream.off`. RAM pre-flight skips the LLM passes on a busy machine; every pass is resumable; the models are unloaded after the run.
 
 Still $0, still local: qmd + ollama are the only inference, no API key exists anywhere in the pipeline.
+
+---
+
+## The Autopilot — acts silently, undo in one minute
+
+Version 0.3 asked politely: every night one suggestions note, every checkbox waiting for review. The telemetry was unambiguous — the proposal notes piled up and **zero were ever reviewed**. A memory system that asks for permission it never gets is just a diary with extra steps. So 0.4 inverts the contract for the *risk-free tier only*: **execute silently, journal everything, make undo cheaper than approval ever was.**
+
+What the autopilot may do at night (each capped, each skippable):
+
+| Tier | Action | Cap |
+|---|---|---|
+| 0a | add reciprocal `[[wikilinks]]` between curated notes (append-only, under `## Links`, never while you're editing the file) | 6/night |
+| 0b | archive machine-generated refs cards >21 days old outside the top 30 (only `status: inbox\|parked` — unknown provenance is never touched) | — |
+| 0c | mark dream notes older than 3 days `superseded` (frontmatter field only) | — |
+| 0d/1 | drain the chat-mining and harvest queues: a strict local judge ("when in doubt: NO") either checks a session off or distills a lesson **draft** into `_inbox/lessons/` | 10 + 5/night |
+
+What it will **never** do: delete anything, edit the body of a curated note, touch `chats/` raw files or `profile/`, promote its own drafts.
+
+The trust mechanics:
+
+- **Action journal** (`actions.jsonl`): every action is recorded with verbatim undo data *before* you ever see it. `/undo` rolls back one action, one night, or everything — with precondition checks, so anything you already changed yourself is skipped, never clobbered.
+- **Implicit feedback**: undo = rejected. Link survives two weeks = accepted. Draft promoted or edited = accepted; untouched for 45 days = rejected. The engine gets more conservative exactly where you push back — no review ritual required.
+- **One morning notification**, debounced to once a day: "OS overnight: 3 links, 2 drafts · /undo available". The night journal (`/dream`) has the details.
+- **Kill switches, layered:** `touch ~/.claude/personal-os/autopilot.off` stops execution while the passes keep computing; `dream.off` stops everything.
+
+**Active guardrails** ship alongside, because acting silently only works if the risky direction is guarded too: a deterministic PreToolUse hook (`guard.py`) compiles your top-firing lessons into real deny/ask/warn decisions — named probes in code, never shell from JSON, fail-open on any error, `POS_GUARD=skip` as the logged escape hatch, and an `ask-only` shadow-week mode before you let it enforce. `preflight.sh` stamps a typecheck+author marker that the deploy guard verifies, and a SessionStart brief injects hub status, open items, and the top-3 lessons so every session starts knowing instead of asking.
+
+The honest caveat: the draft writer is a 3B local model. Its lesson drafts are mediocre on purpose-built days and worse on messy ones — which is exactly why they land in `_inbox/lessons/` as `confidence: low` drafts that you promote, sharpen, or ignore, and never in your curated lessons folder. The autopilot's value is not prose quality; it is that the queues drain to zero every night and nothing waits on a review you were never going to do.
 
 ---
 
@@ -186,7 +214,9 @@ python3 install/install.py --check-drift   # later: installed vs repo vs install
 | `/mine-chats` | Distill learnings from imported chat transcripts |
 | `/lessons-gc` | Prune cold, stale, and duplicate lessons to keep the store sharp |
 | `/harvest` | Distill lessons & ideas from sessions that ended without `/save`, into a review inbox |
-| `/dream` | Show the latest overnight dream note; `/dream review` = risk-tiered Y/N through its suggestions |
+| `/dream` | Show the night journal — what the autopilot executed + yesterday's residue |
+| `/undo` | Roll back autopilot actions — last night entirely, or targeted by count/date/id |
+| `/ask` | One question, all memories — qmd + chats + graph in parallel, answered with sources |
 | `/producer` | Show (or `review`) pending cold-outreach text drafts — real Gmail drafts only after a yes, never sent |
 
 ---

@@ -2,13 +2,13 @@
 
 > **DE zuerst, dann EN.** Each section has a German half and an English half.
 
-Vollständige Referenz: die 10 Slash-Commands, die 3 Hooks, die Engines `os_lessons.py` /
-`os_doctor.py` (+ optional `dream.py`) und die Wartungs-Skripte — was jedes tut, wann es
-läuft, was es liest/schreibt.
+Vollständige Referenz: die 12 Slash-Commands, die 5 Hooks, die Engines `os_lessons.py` /
+`os_doctor.py` (+ optional `dream.py` / `pos_autopilot.py`) und die Wartungs-Skripte —
+was jedes tut, wann es läuft, was es liest/schreibt.
 
-Complete reference: the 10 slash commands, the 3 hooks, the engines (`os_lessons.py`,
-`os_doctor.py`, + optional `dream.py`), and the maintenance scripts — what each does,
-when it runs, what it reads/writes.
+Complete reference: the 12 slash commands, the 5 hooks, the engines (`os_lessons.py`,
+`os_doctor.py`, + optional `dream.py` / `pos_autopilot.py`), and the maintenance
+scripts — what each does, when it runs, what it reads/writes.
 
 ---
 
@@ -28,7 +28,9 @@ Installiert nach / installed to: `~/.claude/commands/`
 | `/mine-chats` | Destilliert inkrementell Learnings aus importierten Claude-Chat-Transkripten. | Nach neuen Chat-Imports. | Liest `chats/`, schreibt Lessons/Wissen; State-File für Inkrement. |
 | `/lessons-gc` | Räumt kalte/veraltete/doppelte Lessons aus. **Löscht nie ohne Rückfrage.** | Zur Pflege, gelegentlich. | Liest `lessons/`; optional ollama-Embeddings für Near-Dubletten. |
 | `/harvest` | Verarbeitet die Auto-Harvest-Queue: destilliert Lessons/Ideen aus Sessions, die **ohne `/save`** endeten, in die Review-Inbox `_inbox/`. | Wenn die Queue gefüllt ist (`/os doctor` zeigt's). | Liest Queue + Transkripte; schreibt Drafts nach `_inbox/`. |
-| `/dream` | Zeigt die neueste nächtliche Traumnotiz; `/dream review` geht die Vorschläge risk-getiert durch (trivial Umkehrbares automatisch, Inhaltsänderungen per Y/N) und führt Angenommenes über die bestehenden Wege aus. | Morgens, wenn Dreaming geplant ist. | Liest `_inbox/dreams/`; `review` schreibt Wikilinks + Feedback nach `dream-feedback.jsonl` (adaptive Schwellwerte). |
+| `/dream` | Zeigt das Nachtjournal: was der Autopilot ausgeführt hat + Tagesrest. Kein Review-Ritual mehr — Rückgängig via `/undo`. | Morgens, wenn Dreaming geplant ist. | Liest `_inbox/dreams/` + `actions.jsonl`. Ändert nichts. |
+| `/undo` | Rollt Autopilot-Aktionen zurück — letzte Nacht komplett oder gezielt (Anzahl/Datum/Id). Übersprungen wird, was du inzwischen selbst geändert hast. | Wenn dir eine Auto-Aktion nicht passt. | Liest/schreibt `actions.jsonl`; jeder Undo = `rejected`-Feedback nach `dream-feedback.jsonl`. |
+| `/ask` | Eine Frage, alle Gedächtnisse: qmd (semantisch) + Chat-Historie + Graph parallel; Antwort mit Quellen, nie erfunden. | Wenn du etwas wissen willst, ohne zu wissen, wo es liegt. | Liest qmd-Index, `chats/`, `graphify-out/`. Schreibt nichts. |
 | `/producer` | Zeigt wartende Cold-Outreach-Textentwürfe (aus dem `producer`-Pass); `/producer review` legt nach Y/N ECHTE Gmail-Drafts an — nie automatisch, nie gesendet. | Optional, wenn du `producer-queue.jsonl` selbst befüllst. | Liest `_inbox/producer-drafts/`; `review` legt Gmail-Drafts an + schreibt `producer-feedback.jsonl`. |
 
 ### EN
@@ -43,22 +45,29 @@ Installiert nach / installed to: `~/.claude/commands/`
 | `/mine-chats` | Incrementally distills learnings from imported Claude chat transcripts. | After new chat imports. | Reads `chats/`, writes lessons/knowledge; state-file for incrementing. |
 | `/lessons-gc` | Prunes cold/stale/duplicate lessons. **Never deletes without asking.** | For maintenance, occasionally. | Reads `lessons/`; optional ollama embeddings for near-duplicates. |
 | `/harvest` | Processes the auto-harvest queue: distills lessons/ideas from sessions that ended **without `/save`** into the review inbox `_inbox/`. | When the queue has items (`/os doctor` shows it). | Reads the queue + transcripts; writes drafts to `_inbox/`. |
-| `/dream` | Shows the latest overnight dream note; `/dream review` walks its suggestions risk-tiered (trivially-reversible ones automatic, content changes per Y/N) and executes accepted ones through the existing commands. | Mornings, if dreaming is scheduled. | Reads `_inbox/dreams/`; `review` writes wikilinks + feedback to `dream-feedback.jsonl` (adaptive thresholds). |
+| `/dream` | Shows the night journal: what the autopilot executed + yesterday's residue. No review ritual anymore — rollback via `/undo`. | Mornings, if dreaming is scheduled. | Reads `_inbox/dreams/` + `actions.jsonl`. Changes nothing. |
+| `/undo` | Rolls back autopilot actions — last night entirely, or targeted (count/date/id). Anything you changed yourself in the meantime is skipped. | Whenever an auto action doesn't sit right. | Reads/writes `actions.jsonl`; every undo = `rejected` feedback into `dream-feedback.jsonl`. |
+| `/ask` | One question, all memories: qmd (semantic) + chat history + graph in parallel; answers with sources, never invents. | When you want to know something without knowing where it lives. | Reads the qmd index, `chats/`, `graphify-out/`. Writes nothing. |
 | `/producer` | Shows pending cold-outreach text drafts (from the `producer` pass); `/producer review` creates REAL Gmail drafts after a yes/no — never automatically, never sent. | Optional, once you populate `producer-queue.jsonl` yourself. | Reads `_inbox/producer-drafts/`; `review` creates Gmail drafts + writes `producer-feedback.jsonl`. |
 
 ---
 
 ## 2. Hooks (die Magie / the magic)
 
-Installiert nach / installed to: `~/.claude/hooks/`. Beide sind **rein informativ und
-blockieren nie / both are purely informational and never block.**
+Installiert nach / installed to: `~/.claude/hooks/`. Die Recall-/Brief-Hooks sind rein
+informativ; **`guard.py` ist der eine Hook, der bewusst blocken darf** (deny/ask) — und
+selbst der ist fail-open. / The recall/brief hooks are purely informational;
+**`guard.py` is the one hook that may deliberately block** (deny/ask) — and even it
+fails open.
 
 ### DE
 
 | Hook | Typ | Was es tut | Wann | Liest / Schreibt |
 |------|-----|-----------|------|------------------|
 | `recall-lessons.py` | `UserPromptSubmit` | Lokale semantische Suche (`qmd vsearch`, kein API, $0) über vergangene Lessons; injiziert Treffer in Claudes Kontext, damit dokumentierte Fehler sich nicht wiederholen. | Bei **jedem** Prompt. | Liest den qmd-Index; schreibt ins Fire-Log. |
-| `risk-recall.py` | `PreToolUse` | Feuert genau vor riskanten/nach-außen gerichteten Aktionen (`git push --force`, `rm -rf`, `reset --hard`, deploy/vercel, `npm publish`, DB drop/delete, Mailversand) und holt relevante Lessons im Moment der Aktion hervor. | **Vor** riskanten Tool-Aufrufen. | Liest den qmd-Index; schreibt ins Fire-Log. |
+| `guard.py` | `PreToolUse` (läuft VOR risk-recall) | Deterministischer Wächter: kompilierte Top-Lessons aus `guards.json` als echte deny/ask/warn-Entscheidungen — benannte Probes im Code (Multi-Worktree, dirty Tree, `.env` ohne `.vercelignore`, falscher Author, hinter origin, stale Preflight), nie Shell aus JSON. Fail-open; `POS_GUARD=skip`-Präfix = deny→ask (geloggt); `mode: ask-only` für die Schattenwoche. | **Vor** jedem Bash-Kommando. | Liest `guards.json`; schreibt Fires (`guard-*`) ins Fire-Log. |
+| `risk-recall.py` | `PreToolUse` | Feuert genau vor riskanten/nach-außen gerichteten Aktionen (`git push --force`, `rm -rf`, `reset --hard`, deploy/vercel, `npm publish`, DB drop/delete, Mailversand) und holt relevante Lessons im Moment der Aktion hervor — der semantische Long-Tail hinter `guard.py`. | **Vor** riskanten Tool-Aufrufen. | Liest den qmd-Index; schreibt ins Fire-Log. |
+| `session-brief.py` | `SessionStart` | Projekt-Brief (≤25 Zeilen): Hub-Stand (`path:`-Frontmatter-Match, Slug-Fallback, un-gehubbter Log-Fallback), offene Punkte aus dem neuesten Log (Stale-Skip 14d), Top-3-Lessons via einem gedeckelten qmd-Call. Still in `~`/`/tmp`. | Beim Session-Start. | Liest Hubs/Logs/qmd-Index; loggt qmd-Misses ins Fire-Log. |
 | `health-sentinel.py` | `SessionStart` | Backstop für „der Scheduler selbst ist tot": liest `health.json` und meldet Degradierung/Stille der Nightly-Jobs max. 1×/Tag als systemMessage; wärmt zusätzlich das qmd-Embedding-Modell detached vor (kein Cold-Start-Timeout beim ersten Recall). | Beim Session-Start. | Liest `health.json`; schreibt einen Tages-Marker nach `$TMPDIR`. |
 
 Die Recall-Hooks teilen sich das append-only **Fire-Log** `lesson-fires.jsonl` (im
@@ -71,7 +80,9 @@ Health-/Mess-Schleife an und macht Coverage-Lücken sichtbar.
 | Hook | Type | What it does | When | Reads / Writes |
 |------|------|-------------|------|----------------|
 | `recall-lessons.py` | `UserPromptSubmit` | Local semantic search (`qmd vsearch`, no API, $0) over past lessons; injects hits into Claude's context so documented mistakes aren't repeated. | On **every** prompt. | Reads the qmd index; appends to the fire-log. |
-| `risk-recall.py` | `PreToolUse` | Fires right before risky/outward actions (`git push --force`, `rm -rf`, `reset --hard`, deploy/vercel, `npm publish`, db drop/delete, sending mail) and re-surfaces relevant lessons at the action moment. | **Before** risky tool calls. | Reads the qmd index; appends to the fire-log. |
+| `guard.py` | `PreToolUse` (runs BEFORE risk-recall) | Deterministic guard: your top lessons compiled from `guards.json` into real deny/ask/warn decisions — named probes in code (multi-worktree, dirty tree, `.env` without `.vercelignore`, wrong author, behind origin, stale preflight), never shell from JSON. Fail-open; `POS_GUARD=skip` prefix = deny→ask (logged); `mode: ask-only` for the shadow week. | **Before** every Bash command. | Reads `guards.json`; appends fires (`guard-*`) to the fire-log. |
+| `risk-recall.py` | `PreToolUse` | Fires right before risky/outward actions (`git push --force`, `rm -rf`, `reset --hard`, deploy/vercel, `npm publish`, db drop/delete, sending mail) and re-surfaces relevant lessons at the action moment — the semantic long tail behind `guard.py`. | **Before** risky tool calls. | Reads the qmd index; appends to the fire-log. |
+| `session-brief.py` | `SessionStart` | Project brief (≤25 lines): hub status (`path:` frontmatter match, slug fallback, un-hubbed log fallback), open items from the newest log (stale-skip 14d), top-3 lessons via one capped qmd call. Quiet in `~`/`/tmp`. | On session start. | Reads hubs/logs/qmd index; logs qmd misses to the fire-log. |
 | `health-sentinel.py` | `SessionStart` | Backstop for "the scheduler itself is dead": reads `health.json` and reports nightly-job degradation/silence at most once per day as a systemMessage; also warms the qmd embedding model detached (no cold-start timeout on the first recall). | On session start. | Reads `health.json`; writes a daily marker to `$TMPDIR`. |
 
 The recall hooks share the append-only **fire-log** `lesson-fires.jsonl` (under
@@ -140,9 +151,11 @@ empfohlen — ohne es laufen nur die LLM-freien Pässe). Läuft ~30 Minuten nach
 Graph-Rebuild und arbeitet sieben Analyse-Pässe plus den Report ab (Feuer-Muster,
 Producer, implizite Verbindungen, Lesson-Konsolidierung, Venture-Muster, Inbox-Triage,
 Tagesrest-Digest) — alle außer Tagesrest sind reine Embedding-/Python-Pässe ohne
-Pflicht-LLM. Schreibt **ausschließlich** eine Vorschlags-Notiz nach `_inbox/dreams/`,
-ändert nie selbst eine Notiz. Aus/An: Datei `dream.off` im Engine-Home-Verzeichnis.
-Review via **`/dream review`**.
+Pflicht-LLM. Die Pässe rechnen nur; die risikoarme Schicht ihrer Ergebnisse führt
+danach `pos_autopilot.py` aus (journalt via `pos_actions.py`, Rückgängig via `/undo`),
+und der Report schreibt das **Nachtjournal** nach `_inbox/dreams/`. Kill-Switches im
+Engine-Home: `dream.off` (alles aus) · `autopilot.off` (nur Ausführung aus). Ansehen
+via **`/dream`**, zurückrollen via **`/undo`** — kein Review-Ritual mehr.
 
 **Venture-Muster** (`ventures`): sobald ein neuer Projekt-Hub auftaucht (jung genug,
 21-Tage-Fenster), wird er gegen deine eigenen `done`/`parked`-Projekte auf Ähnlichkeit
@@ -167,9 +180,12 @@ recommended — without it only the LLM-free passes run). Runs ~30 minutes after
 graph rebuild and works through seven analysis passes plus the report (firing
 patterns, producer, implicit connections, lesson consolidation, venture patterns,
 inbox triage, day-residue digest) — all but residue are embeddings/Python only, no
-mandatory LLM. Writes **only** a suggestions note to `_inbox/dreams/`; never edits a
-note itself. On/off: a `dream.off` file in the engine's home dir. Review via
-**`/dream review`**.
+mandatory LLM. The passes only compute; the low-risk share of their output is then
+executed by `pos_autopilot.py` (journaled via `pos_actions.py`, reversible via
+`/undo`), and the report writes the **night journal** to `_inbox/dreams/`. Kill
+switches in the engine home: `dream.off` (everything off) · `autopilot.off`
+(execution only). View via **`/dream`**, roll back via **`/undo`** — no review
+ritual anymore.
 
 **Venture patterns** (`ventures`): whenever a new project hub appears (young enough,
 21-day window), it's checked for similarity against your own `done`/`parked` projects —
@@ -198,7 +214,11 @@ Installiert nach / installed to: `~/.personal-os/scripts/` (bzw. dein `scripts_d
 | Skript | Was es tut | Wann | Details |
 |--------|-----------|------|---------|
 | `graph_rebuild.sh` | Nightly-Wartung: optionaler Chat-Import, graphify-Update + Wikilink-Injektion, qmd-Re-Index, Fire-Log-Rotation, Vault-Snapshot (via `vault_autopush.sh`), Runtime-Doctor. | Nächtlich 04:15 (`--schedule`). | mkdir-Lock; jeder Step meldet rc/Dauer an `pos_health.py` → `health.json`. Fail-open. |
-| `dream_run.sh` | Orchestriert die Dreaming-Pässe (Kill-Switch, RAM-Pre-Flight, Kollisions-Guard gegen den Graph-Rebuild, Timeouts), entlädt die Modelle danach. | Nächtlich 04:45 (`--schedule-dream`). | mkdir-Lock + Health-Steps (Job `dream`); Early-Exits finalisieren die Health-Datei trotzdem. |
+| `dream_run.sh` | Orchestriert Feedback-Collector → Dreaming-Pässe → Autopilot-Steps (`act-*`) → Report → Notify (Kill-Switches, RAM-Pre-Flight, Kollisions-Guard gegen den Graph-Rebuild, Timeouts), entlädt die Modelle danach. | Nächtlich 04:45 (`--schedule-dream`). | mkdir-Lock + Health-Steps (Job `dream`); Early-Exits finalisieren die Health-Datei trotzdem. |
+| `pos_actions.py` | Actions-Journal + Undo: journalt jede Autopilot-Aktion mit verbatim Undo-Daten; `undo` rollt mit Precondition-Checks zurück; `collect-feedback` bewertet implizit (Undo/entfernt = rejected, überlebt/promotet = accepted). | Nächtlich (collect-feedback) + via `/undo`. | Liest/schreibt `actions.jsonl`, `dream-feedback.jsonl`, `feedback-scan.json`. |
+| `pos_autopilot.py` | Tier-0/1-Executor: act-links / act-dreams / act-refs / act-mine / act-harvest / notify — jeweils Cap-begrenzt, alles journalt. Kill-Switch `autopilot.off`. | Nächtlich aus `dream_run.sh`; jeder Subcommand auch manuell. | Schreibt kuratierte `## Links`-Appends, `_inbox/refs/_archive/`, `_inbox/lessons/`-Drafts, State-Files, Journal. |
+| `os_dashboard.py` | Deterministischer Refresh des `os:auto`-Blocks in `HOME.md` (Bestand, Pipeline, Autopilot-Aktivität, System-Health) — der eine Codepfad hinter `/os update`. | Via `/os update`; nightly-tauglich. | Liest Vault + `actions.jsonl` + `health.json`; schreibt NUR den Marker-Block. |
+| `preflight.sh` | Voller `tsc --noEmit` + Author-Check, stempelt `.git/pos-preflight-ok` (HEAD-SHA, 30-min-TTL) — die Guard-Regel `deploy-no-preflight` verlangt den Marker vor push/deploy. | Vor Deploys (manuell oder von Claude). | Liest `guards.json`/Env für die erwartete Mail; schreibt den Marker. |
 | `vault_autopush.sh` | Committet + pusht den Vault in **sein eigenes** privates Remote — **Allowlist-Staging** (nur kuratierte Ordner + Top-Level-`*.md`; `chats/` + `_inbox/` können strukturell nie gestaged werden). | Opt-in Stop-Hook (`--autopush`) **und** aus dem Nightly — ein Codepfad. | Lock `vault-git`, Commit-rc-Check, Abort bei sensiblen Pfaden im Index, WARN bei Strays. No-op ohne Vault-Git-Repo. |
 | `pos_health.py` | Health-Signal der Nightly-Jobs: `begin`/`step`/`finalize` spiegeln jeden Step-rc nach `health.json`; `check` = Einzeiler + Exit 1 bei Degradierung. | Von den Wrappern aufgerufen. | Max. 1 Desktop-Notification pro Tag (Debounce). |
 | `qmd_search.py` / `pos_utils.py` | Geteilte Fundamente: **der eine** qmd-Client (`vsearch --format json`, Score 0–100) bzw. atomare Writes, mkdir-Locks, Fire-Log. | Von Hooks, Dream-Engine, Doctors importiert. | Ersetzt vier divergierte qmd-Parser. |
@@ -208,7 +228,11 @@ Installiert nach / installed to: `~/.personal-os/scripts/` (bzw. dein `scripts_d
 | Script | What it does | When | Details |
 |--------|-------------|------|---------|
 | `graph_rebuild.sh` | Nightly maintenance: optional chat import, graphify update + wikilink injection, qmd re-index, fire-log rotation, vault snapshot (via `vault_autopush.sh`), runtime doctor. | Nightly 04:15 (`--schedule`). | mkdir lock; every step reports rc/duration to `pos_health.py` → `health.json`. Fail-open. |
-| `dream_run.sh` | Orchestrates the dreaming passes (kill switch, RAM pre-flight, collision guard against the graph rebuild, timeouts), unloads the models afterwards. | Nightly 04:45 (`--schedule-dream`). | mkdir lock + health steps (job `dream`); early exits still finalize the health file. |
+| `dream_run.sh` | Orchestrates feedback collector → dreaming passes → autopilot steps (`act-*`) → report → notify (kill switches, RAM pre-flight, collision guard against the graph rebuild, timeouts), unloads the models afterwards. | Nightly 04:45 (`--schedule-dream`). | mkdir lock + health steps (job `dream`); early exits still finalize the health file. |
+| `pos_actions.py` | Action journal + undo: journals every autopilot action with verbatim undo data; `undo` rolls back with precondition checks; `collect-feedback` scores implicitly (undone/removed = rejected, survived/promoted = accepted). | Nightly (collect-feedback) + via `/undo`. | Reads/writes `actions.jsonl`, `dream-feedback.jsonl`, `feedback-scan.json`. |
+| `pos_autopilot.py` | Tier-0/1 executor: act-links / act-dreams / act-refs / act-mine / act-harvest / notify — each cap-limited, everything journaled. Kill switch `autopilot.off`. | Nightly from `dream_run.sh`; every subcommand also runs manually. | Writes curated `## Links` appends, `_inbox/refs/_archive/`, `_inbox/lessons/` drafts, state files, the journal. |
+| `os_dashboard.py` | Deterministic refresh of the `os:auto` block in `HOME.md` (inventory, pipeline, autopilot activity, system health) — the one code path behind `/os update`. | Via `/os update`; nightly-capable. | Reads the vault + `actions.jsonl` + `health.json`; writes ONLY the marker block. |
+| `preflight.sh` | Full `tsc --noEmit` + author check, stamps `.git/pos-preflight-ok` (HEAD SHA, 30-min TTL) — the `deploy-no-preflight` guard rule demands the marker before push/deploy. | Before deploys (manually or by Claude). | Reads `guards.json`/env for the expected email; writes the marker. |
 | `vault_autopush.sh` | Commits + pushes the vault to **its own** private remote — **allowlist staging** (only curated folders + top-level `*.md`; `chats/` + `_inbox/` structurally can never be staged). | Opt-in Stop hook (`--autopush`) **and** from the nightly — one code path. | Lock `vault-git`, commit-rc check, abort on sensitive paths in the index, WARN on strays. No-op without a vault git repo. |
 | `pos_health.py` | Health signal for the nightly jobs: `begin`/`step`/`finalize` mirror every step rc into `health.json`; `check` = one-liner + exit 1 when degraded. | Called by the wrappers. | At most one desktop notification per day (debounce). |
 | `qmd_search.py` / `pos_utils.py` | Shared foundations: **the one** qmd client (`vsearch --format json`, score 0–100) resp. atomic writes, mkdir locks, fire-log. | Imported by hooks, dream engine, doctors. | Replaces four divergent qmd parsers. |
@@ -220,17 +244,25 @@ Installiert nach / installed to: `~/.personal-os/scripts/` (bzw. dein `scripts_d
 ### DE
 
 - **Capture**: `/save`, `/lesson`, `/idea`, `/mine-chats`, `/harvest` (un-gesavte Sessions)
-- **Recall**: `recall-lessons.py` (jeder Prompt) + `risk-recall.py` (vor Risiko-Aktionen),
-  außerdem `/resume`
-- **Maintain / Self-Heal**: `/os` (+ `os_lessons.py health`), `/os doctor` (+ `os_doctor.py`),
-  `/lessons-gc` (+ `os_lessons.py gc`), `/dream` (+ nächtliche Dreaming-Engine),
-  `health-sentinel.py` + `pos_health.py` (Nightly-Gesundheit), `vault_autopush.sh` (Backup)
+- **Recall**: `recall-lessons.py` (jeder Prompt) + `risk-recall.py` (vor Risiko-Aktionen)
+  + `session-brief.py` (Session-Start), außerdem `/resume` und `/ask`
+- **Guard**: `guard.py` (deterministische deny/ask/warn-Wächter) + `preflight.sh`
+- **Act / Undo**: `pos_autopilot.py` (nächtliche Tier-0-Ausführung) + `pos_actions.py`
+  (Journal, `/undo`, implizites Feedback)
+- **Maintain / Self-Heal**: `/os` (+ `os_lessons.py health`, `os_dashboard.py`), `/os doctor`
+  (+ `os_doctor.py`), `/lessons-gc` (+ `os_lessons.py gc`), `/dream` (+ nächtliche
+  Dreaming-Engine), `health-sentinel.py` + `pos_health.py` (Nightly-Gesundheit),
+  `vault_autopush.sh` (Backup)
 
 ### EN
 
 - **Capture**: `/save`, `/lesson`, `/idea`, `/mine-chats`, `/harvest` (un-saved sessions)
-- **Recall**: `recall-lessons.py` (every prompt) + `risk-recall.py` (before risk actions),
-  plus `/resume`
-- **Maintain / self-heal**: `/os` (+ `os_lessons.py health`), `/os doctor` (+ `os_doctor.py`),
-  `/lessons-gc` (+ `os_lessons.py gc`), `/dream` (+ the nightly dreaming engine),
-  `health-sentinel.py` + `pos_health.py` (nightly health), `vault_autopush.sh` (backup)
+- **Recall**: `recall-lessons.py` (every prompt) + `risk-recall.py` (before risk actions)
+  + `session-brief.py` (session start), plus `/resume` and `/ask`
+- **Guard**: `guard.py` (deterministic deny/ask/warn guards) + `preflight.sh`
+- **Act / undo**: `pos_autopilot.py` (nightly tier-0 execution) + `pos_actions.py`
+  (journal, `/undo`, implicit feedback)
+- **Maintain / self-heal**: `/os` (+ `os_lessons.py health`, `os_dashboard.py`), `/os doctor`
+  (+ `os_doctor.py`), `/lessons-gc` (+ `os_lessons.py gc`), `/dream` (+ the nightly
+  dreaming engine), `health-sentinel.py` + `pos_health.py` (nightly health),
+  `vault_autopush.sh` (backup)

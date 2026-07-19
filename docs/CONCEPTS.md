@@ -229,34 +229,36 @@ selbst** am Leben halten.
 
 Menschliche Gedächtnisse konsolidieren im Schlaf — Personal OS auch (Opt-in,
 `--schedule-dream`). Einmal pro Nacht verdichtet eine lokale Engine den Tagesrest,
-schlägt fehlende `[[Verbindungen]]` zwischen Notizen vor, erkennt Feuer-Muster im
+findet fehlende `[[Verbindungen]]` zwischen Notizen, erkennt Feuer-Muster im
 Recall (inkl. der *Misses*), kaut Lesson-Merges vor, rankt die Review-Inbox gegen
 deine aktiven Projekte, prüft neue Projekte gegen die „Form" vergangener gescheiterter
 Ventures und rendert (aus einer Lead-Queue, die du selbst befüllst) Outreach-Entwürfe.
-Alles landet als **Checkbox-Vorschläge** in einer einzigen Traumnotiz
-(`_inbox/dreams/`, gitignored) — nichts wird je automatisch geändert oder versendet.
-Du reviewst morgens mit `/dream review` (risk-getiert) bzw. `/producer review`; jedes
-Y/N verschiebt die Schwellwerte des jeweiligen Passes (Zähler, kein ML). Nur der
-Tagesrest-Pass MUSS ein LLM benutzen (klein, lokal, hart gedeckelt; ventures darf
-einen einzigen Call fürs Verdikt machen); Kill-Switch: `dream.off` im State-Home.
-Dreaming ist die Maintain-Phase, die von allein läuft — der Vault wird über Nacht
-*vernetzter*, nicht nur größer.
+Die Pässe rechnen nur — die risikoarme Schicht ihrer Ergebnisse führt der
+**Autopilot** aus (Sektion 8), der Rest landet als Hinweise im **Nachtjournal**
+(`_inbox/dreams/`, gitignored). Versendet wird nie etwas automatisch. Feedback
+entsteht implizit (Undo = rejected, Überleben = accepted) und verschiebt die
+Schwellwerte des jeweiligen Passes (Zähler, kein ML). Nur der Tagesrest-Pass MUSS
+ein LLM benutzen (klein, lokal, hart gedeckelt; ventures darf einen einzigen Call
+fürs Verdikt machen); Kill-Switch: `dream.off` im State-Home. Dreaming ist die
+Maintain-Phase, die von allein läuft — der Vault wird über Nacht *vernetzter*,
+nicht nur größer.
 
 ### EN — Dreaming: overnight consolidation
 
 Human memory consolidates during sleep — so does Personal OS (opt-in,
 `--schedule-dream`). Once a night, a local engine condenses yesterday's residue,
-proposes missing `[[connections]]` between notes, spots firing patterns in recall
+finds missing `[[connections]]` between notes, spots firing patterns in recall
 (including the *misses*), pre-chews lesson merges, ranks the review inbox against
 your active projects, checks new projects against the "shape" of past failed
 ventures, and renders outreach drafts (from a lead queue you fill yourself).
-Everything lands as **checkbox suggestions** in a single dream note
-(`_inbox/dreams/`, gitignored) — nothing is ever changed or sent automatically. You
-review in the morning with `/dream review` (risk-tiered) resp. `/producer review`;
-every Y/N nudges that pass's thresholds (counters, not ML). Only the residue pass
-MUST use an LLM (small, local, hard-capped; ventures may make a single call to phrase
-its verdict); kill switch: `dream.off` in the state home. Dreaming is the Maintain
-phase that runs by itself — overnight the vault gets *more connected*, not just bigger.
+The passes only compute — the low-risk share of their output is executed by the
+**autopilot** (section 8), the rest lands as hints in the **night journal**
+(`_inbox/dreams/`, gitignored). Nothing is ever sent automatically. Feedback happens
+implicitly (undo = rejected, survival = accepted) and nudges that pass's thresholds
+(counters, not ML). Only the residue pass MUST use an LLM (small, local, hard-capped;
+ventures may make a single call to phrase its verdict); kill switch: `dream.off` in
+the state home. Dreaming is the Maintain phase that runs by itself — overnight the
+vault gets *more connected*, not just bigger.
 
 ### EN
 
@@ -275,3 +277,65 @@ own gaps and watches its own health:
 
 Both are "Maintain" taken one step further: not just keeping the store tidy, but keeping the **loop
 itself** alive.
+
+---
+
+## 8. Der stille Autopilot & die Vertrauens-Inversion / The silent autopilot & the trust inversion
+
+### DE
+
+Die erste Dreaming-Version fragte höflich: jede Nacht eine Vorschlagsnotiz, jede
+Checkbox wartete auf Review. Das Ergebnis war messbar — die Notizen stapelten sich,
+reviewt wurde keine. Die ehrliche Konsequenz: **Vorab-Genehmigung, die nie stattfindet,
+ist keine Sicherheit.** Also invertiert der Autopilot den Vertrag für die risikofreie
+Schicht: still ausführen, alles journalen, Undo billiger machen als Genehmigung.
+
+Die drei Bausteine:
+
+- **Das Journal ist das Fundament** (`actions.jsonl`): keine Aktion ohne verbatim
+  Undo-Daten, geschrieben *bevor* du sie je siehst. `/undo` rollt eine Nacht in unter
+  einer Minute zurück — mit Precondition-Checks: was du inzwischen selbst geändert
+  hast, wird übersprungen, nie überschrieben. Sicherheit = Post-hoc-Undo statt
+  Vorab-Genehmigung.
+- **Feedback ohne Ritual**: jedes Undo zählt als *rejected*; ein nächtlicher Scanner
+  bewertet, was du mit den Artefakten stillschweigend getan hast (Link zwei Wochen
+  behalten = accepted, Draft promotet = accepted, 45 Tage unberührt = rejected). Die
+  adaptiven Schwellwerte bekommen mehr Signal als das Review-Ritual je geliefert hat.
+- **Die riskante Richtung ist bewacht** (`guard.py`): deine meistfeuernden Lessons
+  werden zu deterministischen deny/ask/warn-Regeln kompiliert — benannte Probes im
+  Code, nie Shell aus JSON, fail-open bei jedem Fehler, `POS_GUARD=skip` als geloggte
+  Notluke, `ask-only` als Schattenwochen-Modus. Still handeln dürfen und riskantes
+  Handeln abfangen sind zwei Seiten desselben Vertrags.
+
+Tier-Grenzen bleiben hart: löschen nie, kuratierte Note-Bodies nie (außer dem
+`## Links`-Append), `chats/`-Rohdateien und `profile/` nie, eigene Drafts promoten
+nie. Kill-Switches gestaffelt: `autopilot.off` (nur Ausführung) · `dream.off` (alles).
+
+### EN
+
+The first dreaming version asked politely: one suggestions note per night, every
+checkbox waiting for review. The result was measurable — the notes piled up, none got
+reviewed. The honest conclusion: **up-front approval that never happens is not
+safety.** So the autopilot inverts the contract for the risk-free tier: execute
+silently, journal everything, make undo cheaper than approval.
+
+The three building blocks:
+
+- **The journal is the foundation** (`actions.jsonl`): no action without verbatim
+  undo data, written *before* you ever see it. `/undo` rolls a night back in under a
+  minute — with precondition checks: whatever you changed yourself in the meantime is
+  skipped, never clobbered. Safety = post-hoc undo instead of up-front approval.
+- **Feedback without a ritual**: every undo counts as *rejected*; a nightly scanner
+  scores what you silently did with the artifacts (link kept two weeks = accepted,
+  draft promoted = accepted, untouched for 45 days = rejected). The adaptive
+  thresholds get more signal than the review ritual ever produced.
+- **The risky direction is guarded** (`guard.py`): your top-firing lessons are
+  compiled into deterministic deny/ask/warn rules — named probes in code, never shell
+  from JSON, fail-open on any error, `POS_GUARD=skip` as the logged escape hatch,
+  `ask-only` as the shadow-week mode. Being allowed to act silently and intercepting
+  risky actions are two sides of the same contract.
+
+Tier boundaries stay hard: never delete, never edit a curated note body (beyond the
+`## Links` append), never touch `chats/` raw files or `profile/`, never promote its
+own drafts. Kill switches are layered: `autopilot.off` (execution only) · `dream.off`
+(everything).

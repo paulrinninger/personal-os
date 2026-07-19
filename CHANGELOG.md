@@ -5,6 +5,92 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-07-19
+
+**Why this release exists, honestly:** 0.3's dreaming engine asked for permission every
+night — one suggestions note, checkboxes, `/dream review`. The adoption telemetry was
+unambiguous: the proposal notes accumulated and zero were ever reviewed. Asking was the
+bug. 0.4 inverts the contract for the risk-free tier only — execute silently, journal
+every action with verbatim undo data, and make rolling a whole night back cheaper than
+a single approval ever was. Safety moves from up-front approval (which never happened)
+to post-hoc undo (which takes under a minute).
+
+### Added
+
+- **Action journal + undo — the trust foundation** (`scripts/pos_actions.py`, `/undo`):
+  every autopilot action is journaled to `<state home>/actions.jsonl` with verbatim
+  undo data before you ever see it. Five undo ops (`remove_lines`, `move`,
+  `set_status`, `remove_state_line`, `requeue`), each with precondition checks — what
+  you already changed yourself is skipped, never clobbered. Undoing a link that
+  *created* a `## Links` section also removes the then-empty heading (verbatim
+  roundtrip). Every undo automatically writes `rejected` feedback; a nightly implicit
+  scanner (`collect-feedback`, 48h–30d grace, sidecar against double-scoring) turns
+  what you silently *did* with the artifacts into accepted/rejected signals for the
+  same adaptive thresholds `/dream review` used to feed.
+- **Silent autopilot executors** (`scripts/pos_autopilot.py`, wired into
+  `dream_run.sh`): `act-links` (reciprocal wikilinks from the connections pass, cap
+  6/night, curated dirs only, 30-min mtime guard against concurrent edits),
+  `act-dreams` (dream notes >3d → `status: superseded`), `act-refs` (refs cards >21d
+  outside the top 30 → `_inbox/refs/_archive/`, only `status: inbox|parked` — unknown
+  provenance is never touched; `--dry-run` preview), `act-mine` (chat-mining drain,
+  cap 10/night, both `chats/code` and `chats/gpt`), `act-harvest` (harvest-queue
+  drain, cap 5/night; feeds the judge *parsed transcript text* instead of raw JSON,
+  strict "when in doubt: NO" classifier, meta-phrase garbage filter EN+DE, qmd dedupe
+  ≥80) and `notify` (ONE debounced morning notification). Kill switch:
+  `<state home>/autopilot.off` — execution stops, passes keep computing. Never
+  autonomous: deleting, curated note bodies (beyond the `## Links` append), `chats/`
+  raw files, `profile/`, promoting its own drafts.
+- **Guard compiler — deterministic PreToolUse guardrails** (`claude/hooks/guard.py` +
+  `guards.example.json`): the top-firing deploy/git lessons compiled from text hints
+  into real `deny`/`ask`/`warn` decisions — ten rules from the five top lesson
+  families, seven named probes (multi-worktree, dirty tree, `.env` without
+  `.vercelignore`, wrong author, behind-origin, stale preflight, pre-staged index).
+  Probes are functions in code, never shell strings from JSON (no injection vector).
+  Fail-open everywhere; `POS_GUARD=skip` prefix downgrades deny→ask (logged, never a
+  silent allow); `mode: ask-only` for a shadow week before enforcing. Every fire lands
+  in the fire-log (`guard-deny|guard-ask|guard-warn`) → visible in `/os`. The
+  `deploy-wrong-author` rule reads its expected email from the rule config
+  (`author_email`) — the repo ships only an empty placeholder, the installer fills it
+  from the new `git_author_email` config key / `--git-author-email` flag.
+- **Preflight stamp** (`scripts/preflight.sh`): full `tsc --noEmit` (main tsconfig,
+  not `tsconfig.app.json`) + author check, stamped to `.git/pos-preflight-ok` with the
+  HEAD SHA — the `deploy-no-preflight` guard rule demands a fresh marker (same SHA,
+  <30 min) before push/deploy.
+- **SessionStart project brief** (`claude/hooks/session-brief.py`): ≤25 lines injected
+  at session start — hub status (authoritative `path:` frontmatter match, slug
+  fallback, un-hubbed newest-log fallback), open items from the newest log (stale-skip
+  after 14d), top-3 lessons via one capped qmd call. Sessions start knowing instead of
+  asking; quiet by design in `~` and `/tmp`.
+- **`/undo` and `/ask` commands**; **`scripts/os_dashboard.py`** — the deterministic
+  one-code-path refresh for the `os:auto` block in `HOME.md` (`/os update` now calls
+  it instead of hand-writing the block), including pipeline numbers, last night's
+  autopilot activity, and system health.
+- **Tests**: four new suites (54 tests — journal/undo byte-identical roundtrips for
+  all five ops + precondition skips, guard decisions against real fixture git repos
+  incl. ask-only/skip/fail-open and a hard PII assert on `guards.example.json`,
+  autopilot executors with monkeypatched scoring, session-brief detection paths).
+  Still no qmd/ollama/network anywhere in CI.
+
+### Changed
+
+- **The dream note is a journal now, not a todo list** (`scripts/dream.py` report):
+  leads with "Executed tonight" (grouped actions + `/undo` hint), `status: journal`,
+  no checkboxes, no block IDs. Suggestion lists below the thresholds are discarded
+  instead of accumulated; connection suggestions no longer appear as todos (the
+  autopilot executes the ones above threshold). gc/fires/triage/ventures shrink to
+  hint lines; `/dream review` is retired — `/dream` shows, `/undo` reverts.
+- **Doctor reframed around the drain** (`os_doctor.py`): new Autopilot check
+  (`autopilot.off` → INFO "intentional", missing journal → INFO on fresh installs,
+  stale journal → WARN), harvest-queue and chat-mining thresholds now measure
+  "growing faster than the nightly drain?" (80/160) instead of nagging about backlogs
+  the autopilot drains anyway.
+- **Installer/uninstaller**: hooks `guard.py` + `session-brief.py` installed and
+  sentinel-tracked (guard runs FIRST in the PreToolUse Bash group, the brief under
+  SessionStart); `guards.json` materialized once from the example (never overwrites
+  yours). Uninstall removes the new hooks/commands but deliberately leaves
+  `guards.json` (your rules) and `actions.jsonl` + `harvest-queue-done.jsonl` (the
+  undo journal — deleting it would take away rollback for actions already taken).
+
 ## [0.3.0] - 2026-07-16
 
 ### Added

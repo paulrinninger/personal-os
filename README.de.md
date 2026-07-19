@@ -79,7 +79,7 @@ Zwei Hooks erledigen die Arbeit — und genau das gibt dir keine passive Notiz-A
 
 ## Dreaming — der Vault konsolidiert sich nachts selbst
 
-Recall beantwortet „was weiß ich schon über *das hier*?" Dreaming beantwortet die Frage, die niemand stellt: „was sollte mir über alles hinweg auffallen?" Einmal pro Nacht (Opt-in: `--schedule-dream`) läuft ein kurzer lokaler Durchgang wie ein Gehirn, das im Schlaf Erinnerungen konsolidiert — und schreibt **eine Vorschlagsnotiz**, sonst nichts.
+Recall beantwortet „was weiß ich schon über *das hier*?" Dreaming beantwortet die Frage, die niemand stellt: „was sollte mir über alles hinweg auffallen?" Einmal pro Nacht (Opt-in: `--schedule-dream`) läuft ein kurzer lokaler Durchgang wie ein Gehirn, das im Schlaf Erinnerungen konsolidiert — rechnet über den ganzen Vault, lässt den Autopiloten die risikoarme Schicht ausführen (nächste Sektion) und schreibt **eine Nachtjournal-Notiz**, sonst nichts.
 
 Die ehrliche Mechanik — acht Pässe, bewusst billig:
 
@@ -92,16 +92,44 @@ Die ehrliche Mechanik — acht Pässe, bewusst billig:
 | `ventures` | wenn ein brandneues Projekt die „Form" deiner vergangenen done/parked-Ventures teilt | lokale Embeddings + transitiver Ähnlichkeits-Check; höchstens ein LLM-Call, um das Verdikt zu formulieren |
 | `triage` | welche Review-Inbox-Drafts zu deinen aktiven Projekten passen | lokale Embeddings (ollama) |
 | `residue` | „Was gestern passierte"-Digest aus Logs + neuen Chats | **der einzige Pflicht-LLM-Pass** — ein kleines lokales Modell (Default `llama3.2:3b`), hart gedeckelte Call-Zahl |
-| `report` | baut aus allem, was feuerte, die Traumnotiz | keine |
+| `report` | baut das Nachtjournal: ausgeführte Aktionen zuerst, dann alles, was sonst feuerte | keine |
 
 Leitplanken — ein unbeaufsichtigter Nachtjob verdient sich Vertrauen, oder er verdient nichts:
 
-- **Nur Vorschläge.** Jede Ausgabe ist eine Checkbox in `<vault>/_inbox/dreams/YYYY-MM-DD-dream.md` (gitignored). Nichts editiert, löscht oder promotet eine echte Notiz. Nie. Producer-Entwürfe sind Textdateien in `_inbox/producer-drafts/` — ein echter Gmail-Entwurf entsteht ausschließlich über `/producer review` nach einem Ja, und gesendet wird nie.
+- **Pässe editieren nie echte Notizen.** Die Pässe rechnen nur; die Ausführung ist eine getrennte, journalte Schicht (der Autopilot, unten) mit harten Regeln, was sie anfassen darf. Producer-Entwürfe sind Textdateien in `_inbox/producer-drafts/` — ein echter Gmail-Entwurf entsteht ausschließlich über `/producer review` nach einem Ja, und gesendet wird nie.
 - **Harte Caps überall** — max. gescannte Notizen, max. Vorschläge, max. LLM-Calls, ein Venture-Muster pro Nacht. Eine Traumnotiz ist eine Zwei-Minuten-Lektüre, keine zweite Inbox. Pass-State ist owner-only und wird nach 7 Tagen geprunt.
-- **Du reviewst mit `/dream review`** — jedes Y/N wird protokolliert und speist adaptive Schwellwerte: Lehnst du die Vorschläge eines Passes ab, wird er strenger und leiser; nimmst du sie an, lockert er. Die Engine lernt deinen Geschmack mit Zählern, nicht mit ML. Reviews sind risk-getiert: trivial umkehrbare Aktionen (ein reziproker Wikilink) laufen automatisch, werden aber berichtet; alles, was echten Inhalt ändert, braucht dein Ja.
+- **Feedback ohne Ritual** — jedes `/undo` zählt als *rejected*, und ein nächtlicher Scanner bewertet, was du mit den Artefakten stillschweigend *getan* hast (Link zwei Wochen behalten = accepted; entfernt = rejected). Das speist dieselben adaptiven Schwellwerte wie zuvor: Zähler, kein ML.
 - **Kill-Switch:** `touch ~/.claude/personal-os/dream.off`. Ein RAM-Pre-Flight skippt die LLM-Pässe auf einer ausgelasteten Maschine; jeder Pass ist resumefähig; die Modelle werden nach dem Lauf entladen.
 
 Weiterhin $0, weiterhin lokal: qmd + ollama sind die einzige Inferenz, nirgends in der Pipeline existiert ein API-Key.
+
+---
+
+## Der Autopilot — handelt still, Undo in einer Minute
+
+Version 0.3 hat höflich gefragt: jede Nacht eine Vorschlagsnotiz, jede Checkbox wartete auf Review. Die Telemetrie war eindeutig — die Vorschlagsnotizen stapelten sich, und **keine einzige wurde je reviewt**. Ein Gedächtnissystem, das um Erlaubnis bittet, die es nie bekommt, ist nur ein Tagebuch mit Extraschritten. Also invertiert 0.4 den Vertrag — *nur für die risikofreie Schicht*: **still ausführen, alles journalen, Undo billiger machen, als Genehmigung je war.**
+
+Was der Autopilot nachts tun darf (jeweils gedeckelt, jeweils abschaltbar):
+
+| Tier | Aktion | Cap |
+|---|---|---|
+| 0a | reziproke `[[Wikilinks]]` zwischen kuratierten Notizen setzen (append-only, unter `## Links`, nie während du die Datei gerade bearbeitest) | 6/Nacht |
+| 0b | maschinengenerierte Refs-Karten >21 Tage außerhalb der Top 30 archivieren (nur `status: inbox\|parked` — unbekannte Herkunft wird nie angefasst) | — |
+| 0c | Traumnotizen älter als 3 Tage auf `superseded` setzen (nur das Frontmatter-Feld) | — |
+| 0d/1 | Chat-Mining- und Harvest-Queue drainieren: ein strenger lokaler Judge („im Zweifel NEIN") hakt eine Session ab oder destilliert einen Lesson-**Draft** nach `_inbox/lessons/` | 10 + 5/Nacht |
+
+Was er **nie** tut: irgendetwas löschen, den Body einer kuratierten Notiz editieren, `chats/`-Rohdateien oder `profile/` anfassen, eigene Drafts selbst promoten.
+
+Die Vertrauensmechanik:
+
+- **Actions-Journal** (`actions.jsonl`): jede Aktion wird mit verbatim Undo-Daten protokolliert, *bevor* du sie je siehst. `/undo` rollt eine Aktion, eine Nacht oder alles zurück — mit Precondition-Checks: was du inzwischen selbst geändert hast, wird übersprungen, nie überschrieben.
+- **Implizites Feedback**: Undo = rejected. Link überlebt zwei Wochen = accepted. Draft promotet oder editiert = accepted; 45 Tage unberührt = rejected. Die Engine wird genau dort konservativer, wo du zurückschiebst — ganz ohne Review-Ritual.
+- **Eine Morgen-Notification**, auf einmal pro Tag gedrosselt: „OS heute Nacht: 3 Links, 2 Drafts · /undo möglich". Die Details stehen im Nachtjournal (`/dream`).
+- **Kill-Switches, gestaffelt:** `touch ~/.claude/personal-os/autopilot.off` stoppt die Ausführung, die Pässe rechnen weiter; `dream.off` stoppt alles.
+
+Parallel dazu kommen **aktive Leitplanken** — still handeln funktioniert nur, wenn die riskante Richtung ebenfalls bewacht ist: ein deterministischer PreToolUse-Hook (`guard.py`) kompiliert deine meistfeuernden Lessons zu echten deny/ask/warn-Entscheidungen — benannte Probes im Code, nie Shell aus JSON, fail-open bei jedem Fehler, `POS_GUARD=skip` als geloggte Notluke und ein `ask-only`-Schattenwochen-Modus, bevor du scharf schaltest. `preflight.sh` stempelt einen Typecheck+Author-Marker, den die Deploy-Guard prüft, und ein SessionStart-Brief injiziert Hub-Stand, offene Punkte und die Top-3-Lessons — jede Session startet wissend statt fragend.
+
+Der ehrliche Vorbehalt: der Draft-Schreiber ist ein lokales 3B-Modell. Seine Lesson-Drafts sind an guten Tagen mittelmäßig und an unordentlichen schlechter — genau deshalb landen sie als `confidence: low`-Drafts in `_inbox/lessons/`, die du promotest, schärfst oder ignorierst, und nie in deinem kuratierten Lessons-Ordner. Der Wert des Autopiloten ist nicht Prosaqualität, sondern dass die Queues jede Nacht auf null drainieren und nichts mehr auf ein Review wartet, das du nie machen wolltest.
 
 ---
 
@@ -186,7 +214,9 @@ python3 install/install.py --check-drift   # später: installiert vs. Repo vs. I
 | `/mine-chats` | Destilliert Learnings aus importierten Chat-Transkripten |
 | `/lessons-gc` | Prunet kalte, veraltete und doppelte Lessons, um den Speicher scharf zu halten |
 | `/harvest` | Destilliert Lessons & Ideen aus Sessions, die ohne `/save` endeten, in eine Review-Inbox |
-| `/dream` | Zeigt die neueste nächtliche Traumnotiz; `/dream review` = risk-getiertes Y/N durch ihre Vorschläge |
+| `/dream` | Zeigt das Nachtjournal — was der Autopilot ausgeführt hat + Tagesrest |
+| `/undo` | Rollt Autopilot-Aktionen zurück — letzte Nacht komplett oder gezielt nach Anzahl/Datum/Id |
+| `/ask` | Eine Frage, alle Gedächtnisse — qmd + Chats + Graph parallel, mit Quellen beantwortet |
 | `/producer` | Zeigt (oder `review`) wartende Cold-Outreach-Textentwürfe — echte Gmail-Drafts nur nach einem Ja, nie gesendet |
 
 ---
