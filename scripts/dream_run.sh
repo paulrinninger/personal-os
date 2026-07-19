@@ -1,14 +1,16 @@
 #!/bin/sh
-# dream_run.sh — nightly "dreaming" pass: local-only consolidation, suggestions only.
+# dream_run.sh — nightly "dreaming" pass: local-only consolidation + silent autopilot.
 #
 # Runs dream.py's passes in order (cheapest/safest first), each writing its own resume
-# state, then assembles whatever fired into one dream note under
-# <vault>/_inbox/dreams/. Never edits a live note. Safe to run nightly (launchd on
-# macOS, systemd-timer/cron on Linux) — the installer registers this for you with
+# state, then lets pos_autopilot.py EXECUTE the low-risk layer (every action journaled
+# with verbatim undo data — /undo rolls a whole night back), and finally assembles the
+# night journal under <vault>/_inbox/dreams/. Safe to run nightly (launchd on macOS,
+# systemd-timer/cron on Linux) — the installer registers this for you with
 # --schedule-dream, ~30 minutes after graph_rebuild.sh so the graph is fresh first.
 #
-# Kill switch: create a file named `dream.off` in PERSONAL_OS_HOME (default
-# ~/.claude/personal-os) — remove it to turn dreaming back on.
+# Kill switches (files in PERSONAL_OS_HOME, default ~/.claude/personal-os):
+#   dream.off      — everything off (passes + autopilot)
+#   autopilot.off  — execution off, passes keep running (checked by pos_autopilot.py)
 #
 # Hardening:
 #  - mkdir lock (mirror of pos_utils.acquire_lock, SAME lock directory) so a nightly
@@ -144,6 +146,10 @@ if command -v curl >/dev/null 2>&1 && curl -sf -m 2 "$OLLAMA_BASE/api/version" >
 fi
 [ "$OLLAMA_OK" = 0 ] && SKIP_LLM=1
 
+# Implicit feedback collector FIRST (scores the previous nights' autopilot actions —
+# feeds adaptive_params before tonight's passes pull their thresholds).
+run "collect-feedback" 60 python3 "$SCRIPTS_DIR/pos_actions.py" collect-feedback
+
 # Passes strictly sequential (cheapest first; each resumes via its pass JSON).
 # dream.py is invoked quoted — an unquoted command string would word-split on a
 # scripts dir containing spaces.
@@ -159,7 +165,22 @@ if [ -z "${SKIP_LLM:-}" ]; then
   run "triage"    600  python3 "$SCRIPTS_DIR/dream.py" triage
   run "residue"   900  python3 "$SCRIPTS_DIR/dream.py" residue
 fi
+
+# AUTOPILOT: EXECUTE the low-risk layer (journaled via pos_actions.py, `/undo` rolls a
+# whole night back). Own kill switch: `autopilot.off` in PERSONAL_OS_HOME (checked by
+# pos_autopilot.py itself — the passes above keep running, only execution stops).
+# act-links/act-dreams need no model; act-refs needs ollama (skips itself);
+# act-mine/act-harvest are LLM stages -> under the SKIP_LLM guard.
+run "act-links"    120 python3 "$SCRIPTS_DIR/pos_autopilot.py" act-links
+run "act-dreams"    60 python3 "$SCRIPTS_DIR/pos_autopilot.py" act-dreams
+run "act-refs"     600 python3 "$SCRIPTS_DIR/pos_autopilot.py" act-refs
+if [ -z "${SKIP_LLM:-}" ]; then
+  run "act-mine"    900 python3 "$SCRIPTS_DIR/pos_autopilot.py" act-mine
+  run "act-harvest" 900 python3 "$SCRIPTS_DIR/pos_autopilot.py" act-harvest
+fi
+
 run "report"       60 python3 "$SCRIPTS_DIR/dream.py" report
+run "notify"       30 python3 "$SCRIPTS_DIR/pos_autopilot.py" notify
 
 # Belt-and-braces: unload the models (keep_alive windows are short, but explicit is explicit).
 command -v ollama >/dev/null 2>&1 && {

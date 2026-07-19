@@ -4,10 +4,12 @@
 The idea: after the graph rebuild indexes the day's changes, a short local-LLM pass
 runs like a mind consolidating memory overnight — condensing the day's residue,
 surfacing connections between notes that never link to each other, spotting lesson
-patterns, and ranking the review inbox — then writes ONE proposal note. Nothing here
-ever edits a live note directly; every output is a suggestion with a checkbox, reviewed
-via `/dream review`. $0, fully local: qmd (embeddings/search) does the semantic lifting
-for free, and only one pass (residue) touches an LLM at all, capped at a handful of calls.
+patterns, and ranking the review inbox — then writes ONE night-journal note. Nothing
+here ever edits a live note directly; the passes only compute. The low-risk share of
+their output is EXECUTED afterwards by pos_autopilot.py (journaled with verbatim undo
+data — see pos_actions.py and `/undo`); the rest lands as hints in the journal. $0,
+fully local: qmd (embeddings/search) does the semantic lifting for free, and only one
+pass (residue) touches an LLM at all, capped at a handful of calls.
 
 Passes (each writes its own state file under the day's work dir, so a killed run
 resumes cleanly instead of redoing finished passes):
@@ -27,7 +29,8 @@ resumes cleanly instead of redoing finished passes):
   producer     renders cold-outreach drafts from a queue you fill in yourself (pure
                templating, NO LLM — lead pain-points can't be invented) -> real Gmail
                drafts are only ever created by `/producer review`, never by this script
-  report       assembles whichever passes produced something into the dream note
+  report       assembles the night journal: executed autopilot actions first, then
+               whichever passes produced something worth a hint
 
 Config (env, all optional):
   PERSONAL_OS_VAULT         vault location                (default ~/vault)
@@ -73,9 +76,10 @@ OLLAMA_VERSION = OLLAMA_BASE + "/api/version"
 GEN_MODEL = os.environ.get("PERSONAL_OS_DREAM_MODEL", "llama3.2:3b")
 EMBED_MODEL = os.environ.get("PERSONAL_OS_EMBED_MODEL", "nomic-embed-text")
 
-# Baseline params; nudged over time by acceptance feedback from `/dream review` (see
-# adaptive_params). Deliberately conservative caps — a dream note should be a two-minute
-# read, not a second inbox.
+# Baseline params; nudged over time by acceptance feedback (see adaptive_params) —
+# fed implicitly by `pos_actions.py collect-feedback` and by every `/undo` (rejected).
+# Deliberately conservative caps — a dream note should be a two-minute read, not a
+# second inbox.
 DEFAULTS = {
     "fires":       {"cap": 5},
     "gc":          {"cap": 5},
@@ -826,40 +830,68 @@ def _load(args, name):
         return {}
 
 
+def _tonight_actions(d: str) -> list[dict]:
+    """Journaled autopilot actions of this night (for the night-journal section)."""
+    out = []
+    try:
+        for line in open(os.path.join(PO, "actions.jsonl"), encoding="utf-8",
+                         errors="replace"):
+            try:
+                r = json.loads(line)
+            except Exception:
+                continue
+            if r.get("night") == d and r.get("action") not in ("undo", "undo.skipped"):
+                out.append(r)
+    except FileNotFoundError:
+        pass
+    return out
+
+
 def cmd_report(args):
+    """NIGHT JOURNAL (since the autopilot): leads with what was EXECUTED (+ /undo hint).
+    No checkboxes, no block IDs, no `status: draft` anymore — the adoption telemetry
+    was unambiguous: proposal notes piled up, zero ever reviewed. Suggestion lists
+    below the thresholds are DISCARDED instead of accumulated."""
     d = today(args)
-    did = d.replace("-", "")
     fires, gc = _load(args, "fires"), _load(args, "gc")
     conn, res, tri = _load(args, "connections"), _load(args, "residue"), _load(args, "triage")
     ven, prod = _load(args, "ventures"), _load(args, "producer")
     sec = []
 
+    acts = _tonight_actions(d)
+    if acts:
+        by = {}
+        for a in acts:
+            by.setdefault(a["action"], []).append(a)
+        lines = [f"## Executed tonight ({len(acts)} actions — undo: `/undo`)"]
+        label = {"link.add": "links added", "card.archive": "cards archived",
+                 "note.status": "notes superseded", "state.advance": "chats checked off",
+                 "queue.done": "harvest sessions processed", "draft.create": "drafts created"}
+        for act, rows in sorted(by.items()):
+            lines.append(f"- {len(rows)}x {label.get(act, act)}")
+            for r in rows[:3]:
+                tgt = os.path.basename(str((r.get("targets") or ["?"])[0]))
+                ev = r.get("evidence") or {}
+                lines.append(f"   · {tgt}" + (f" ({ev.get('score')})" if ev.get("score") else ""))
+            if len(rows) > 3:
+                lines.append(f"   · … +{len(rows) - 3}")
+        sec.append("\n".join(lines))
+
     if res.get("synthesis"):
         sec.append(f"## Yesterday's residue ({len(res.get('docs', []))} documents)\n"
                    + res["synthesis"].strip())
-    if conn.get("suggestions"):
-        lines = [f"## New connections ({len(conn['suggestions'])})"]
-        for i, s in enumerate(conn["suggestions"], 1):
-            a = os.path.splitext(s['a'])[0]
-            b = os.path.splitext(s['b'])[0]
-            lines.append(f"- [ ] [[{a}]] <-> [[{b}]] — score {s['score']}"
-                         + (f" — {s['snippet']}" if s.get("snippet") else "")
-                         + f"  ^d{did}-b{i}")
-        sec.append("\n".join(lines))
-    if gc.get("merge_pairs") or gc.get("related_pairs"):
-        lines = ["## Lessons to consolidate -> run /lessons-gc"]
-        i = 0
-        for pr in gc.get("merge_pairs", []):
-            i += 1
-            lines.append(f"- [ ] merge ({pr['cosine']}): [[{os.path.splitext(os.path.basename(pr['a']))[0]}]]"
-                         f" + [[{os.path.splitext(os.path.basename(pr['b']))[0]}]]  ^d{did}-m{i}")
-        for pr in gc.get("related_pairs", []):
-            i += 1
-            lines.append(f"- [ ] cross-link ({pr['cosine']}): [[{os.path.splitext(os.path.basename(pr['a']))[0]}]]"
-                         f" <-> [[{os.path.splitext(os.path.basename(pr['b']))[0]}]]  ^d{did}-m{i}")
+    # connection suggestions are no longer listed here: pos_autopilot.py act-links
+    # executes the ones above threshold (they show up under "Executed tonight"), and
+    # the rest is discarded — a journal, not a second inbox.
+    if gc.get("merge_pairs") or gc.get("cold_count") or gc.get("stale_count"):
+        lines = ["## Lesson maintenance (tier 2: hint only — curated content stays manual)"]
+        for pr in gc.get("merge_pairs", [])[:3]:
+            lines.append(f"- merge candidate ({pr['cosine']}): "
+                         f"[[{os.path.splitext(os.path.basename(pr['a']))[0]}]] + "
+                         f"[[{os.path.splitext(os.path.basename(pr['b']))[0]}]] → /lessons-gc")
         if gc.get("cold_count") or gc.get("stale_count"):
-            lines.append(f"- Also: {gc.get('cold_count', 0)} cold, {gc.get('stale_count', 0)} stale "
-                         f"(of {gc.get('total', '?')}) — details via /lessons-gc")
+            lines.append(f"- inventory: {gc.get('cold_count', 0)} cold, "
+                         f"{gc.get('stale_count', 0)} stale (of {gc.get('total', '?')})")
         sec.append("\n".join(lines))
     if fires.get("top_firers") or fires.get("hot_topics"):
         lines = ["## Firing patterns (7 days)"]
@@ -869,25 +901,31 @@ def cmd_report(args):
             lines.append(f"- {fires['total_fires_7d']} recalls ({trg})")
         for t in fires.get("top_firers", []):
             lines.append(f"- top: {t['count']}x [[{os.path.splitext(os.path.basename(t['path']))[0]}]]")
-        for h in fires.get("hot_lessons", []):
-            lines.append(f"- [ ] hot ({h['count']}x, score {h['max_score']}): "
-                         f"[[{os.path.splitext(os.path.basename(h['path']))[0]}]] — sharpen the rule?  ^d{did}-f{h['count']}")
+        for h in fires.get("hot_lessons", [])[:3]:
+            lines.append(f"- hot ({h['count']}x, score {h['max_score']}): "
+                         f"[[{os.path.splitext(os.path.basename(h['path']))[0]}]] — sharpen the "
+                         f"rule, or compile it into a guard via /lesson --guard")
         if fires.get("hot_topics"):
             lines.append("- hot topics: " + ", ".join(w for w, _ in fires["hot_topics"]))
+        if fires.get("misses_7d"):
+            m = fires["misses_7d"]
+            lines.append("- misses: " + ", ".join(f"{v}x {k}" for k, v in m.items())
+                         + (" — cold-start timeouts? check the doctor" if m.get("timeout", 0) >= 10 else ""))
         sec.append("\n".join(lines))
     if tri.get("top"):
-        lines = [f"## Inbox triage — review these first ({len(tri['top'])} of {tri.get('cards_total', '?')} drafts)"]
-        for i, s in enumerate(tri["top"], 1):
-            lines.append(f"- [ ] {s['card']} -> [[{s['hub']}]] ({s['score']})  ^d{did}-t{i}")
+        lines = [f"## Inbox top picks ({tri.get('cards_total', '?')} drafts live — "
+                 f"the autopilot keeps the refs queue small)"]
+        for s in tri["top"][:3]:
+            lines.append(f"- {s['card']} -> [[{s['hub']}]] ({s['score']})")
         if tri.get("embeds_deferred"):
             lines.append(f"- ({tri['embeds_deferred']} drafts not yet embedded — future nights)")
         sec.append("\n".join(lines))
     if ven.get("patterns"):
         lines = ["## Venture patterns detected — read before you start"]
-        for i, pat in enumerate(ven["patterns"], 1):
+        for pat in ven["patterns"]:
             sibs = " / ".join(f"[[{s}]]" for s in pat["siblings"])
-            lines.append(f"- [ ] [[{pat['new_hub']}]] resembles {sibs} (score {pat['score']}) — "
-                        f"{pat['verdict']}  ^d{did}-v{i}")
+            lines.append(f"- [[{pat['new_hub']}]] resembles {sibs} (score {pat['score']}) — "
+                         f"{pat['verdict']}")
         sec.append("\n".join(lines))
     if prod.get("error"):
         # without this branch, a corrupt producer-templates.json (e.g. interrupted mid-
@@ -924,13 +962,14 @@ def cmd_report(args):
         "tags: [dream, personal-os]",
         f"created: {d}",
         f"updated: {d}",
-        "status: draft",
+        "status: journal",
         "type: dream",
         "---",
         "",
-        f"# Dream — {d}",
-        "> Suggestions only — nothing was changed. Review with `/dream review`. "
-        "Disable overnight runs: create a file named `dream.off` in this engine's home dir.",
+        f"# Night journal — {d}",
+        "> Autopilot: the low-risk actions were EXECUTED (journaled, `/undo` rolls "
+        "everything back). Execution off: `autopilot.off` in this engine's home dir · "
+        "dreaming entirely off: `dream.off`.",
         "",
         "\n\n".join(sec),
         "",
