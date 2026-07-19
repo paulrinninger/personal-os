@@ -1,0 +1,118 @@
+{
+  "version": 1,
+  "mode": "ask-only",
+  "_doc": "Your top-firing lessons compiled into deterministic guards (claude/hooks/guard.py). mode: 'ask-only' = shadow week (every deny is downgraded to ask — run the first week like this), 'enforce' = live. Probes are named functions in guard.py — NEVER shell strings from JSON. In-the-moment override: prefix a command with 'POS_GUARD=skip ' (deny→ask, logged). The installer copies this file to <PERSONAL_OS_HOME>/guards.json and fills author_email from your config (git_author_email); it never overwrites an existing guards.json. Graduate new rules from your own lessons via /lesson --guard. The 'lesson' field is a display-only wikilink to the lesson a rule was compiled from — adapt or drop it.",
+  "rules": [
+    {
+      "id": "vercel-pipe-tail",
+      "enabled": true,
+      "matcher": "vercel\\s+[^|]*\\|\\s*tail",
+      "probes": [
+        "always"
+      ],
+      "decision": "deny",
+      "reason": "Never pipe a deploy CLI through `| tail` — tail buffers, the streaming progress disappears and the deploy looks falsely stuck. Run it without the pipe.",
+      "lesson": "[[never-assume-deploys-verify-actively]]"
+    },
+    {
+      "id": "vercel-env-add-pipe",
+      "enabled": true,
+      "matcher": "(echo|printf)[^|]*\\|\\s*vercel\\s+env\\s+add",
+      "probes": [
+        "always"
+      ],
+      "decision": "deny",
+      "reason": "Piping into `vercel env add` can store the value EMPTY. Use the Vercel dashboard or the REST API instead, then cross-check with `vercel env pull`.",
+      "lesson": "[[vercel-cli-uploads-env-despite-gitignore]]"
+    },
+    {
+      "id": "vercelignore-env",
+      "enabled": true,
+      "matcher": "vercel\\s+(deploy\\b|--prod|deploy\\s+--prod|--prebuilt)",
+      "probes": [
+        "env_without_vercelignore"
+      ],
+      "decision": "deny",
+      "reason": "A .env file sits in this folder but no .vercelignore covers it — the Vercel CLI uploads local .env files as runtime env (.gitignore only protects the repo, not the deployment). Fix: create .vercelignore with `.env` + `.env.*`, then deploy again.",
+      "lesson": "[[vercel-cli-uploads-env-despite-gitignore]]"
+    },
+    {
+      "id": "deploy-wrong-author",
+      "enabled": true,
+      "matcher": "git\\s+push|vercel\\s+(deploy\\b|--prod)",
+      "probes": [
+        "wrong_author"
+      ],
+      "author_email": "",
+      "decision": "deny",
+      "reason": "git user.email does not match your deploy account — some platforms silently ignore pushes from an unknown author (no deploy, no error). Fix: repo-local `git config user.email <your-email>` (never --global).",
+      "lesson": "[[deploy-preflight-tsc-sync-author]]"
+    },
+    {
+      "id": "deploy-behind-origin",
+      "enabled": true,
+      "matcher": "vercel\\s+(deploy\\b|--prod)",
+      "probes": [
+        "behind_origin"
+      ],
+      "decision": "ask",
+      "reason": "This checkout is behind origin (as of the last fetch) — a CLI deploy bundles YOUR local tree, not origin. Safe: a fresh worktree from origin/main, or pull first.",
+      "lesson": "[[deploy-preflight-tsc-sync-author]]"
+    },
+    {
+      "id": "deploy-no-preflight",
+      "enabled": true,
+      "matcher": "git\\s+push|vercel\\s+(deploy\\b|--prod)",
+      "probes": [
+        "preflight_stale"
+      ],
+      "decision": "ask",
+      "reason": "No fresh preflight marker (full tsc + author check) for this HEAD. Fix: run preflight.sh from your scripts dir — full tsconfig, not tsconfig.app.json (30 min TTL).",
+      "lesson": "[[deploy-preflight-tsc-sync-author]]"
+    },
+    {
+      "id": "stage-all-shared-tree",
+      "enabled": true,
+      "matcher": "git\\s+add\\s+(-A\\b|--all\\b|\\.(\\s|$|;))|git\\s+commit\\s+(-\\w*a\\b|--all\\b)",
+      "probes": [
+        "multi_worktree"
+      ],
+      "decision": "deny",
+      "reason": "Multiple worktrees are active: `git add -A/.` sweeps another session's WIP into your commit. Stage ONLY your own paths; then read `git diff --cached --name-only`.",
+      "lesson": "[[shared-tree-stage-only-your-own-hunks]]"
+    },
+    {
+      "id": "stage-all-single-tree",
+      "enabled": true,
+      "matcher": "git\\s+add\\s+(-A\\b|--all\\b)",
+      "probes": [
+        "index_prestaged"
+      ],
+      "decision": "ask",
+      "reason": "The index ALREADY contains staged changes — `git add -A` mixes them with everything else. Quick check: `git diff --cached --name-only`.",
+      "lesson": "[[shared-tree-stage-only-your-own-hunks]]"
+    },
+    {
+      "id": "reset-hard-wip",
+      "enabled": true,
+      "matcher": "git\\s+reset\\s+--hard|git\\s+checkout\\s+(-f\\b|--force)|git\\s+clean\\s+-\\w*[fd]",
+      "probes": [
+        "dirty_tracked"
+      ],
+      "decision": "ask",
+      "reason": "Tracked WIP is uncommitted. Classify it first (identical/superseded/unique via `git cherry -v` + diff direction), back up: `git add -u && git commit` on backup/<date> — THEN reset. Careful: reset --hard also hits untracked files whose path is tracked upstream.",
+      "lesson": "[[classify-wip-before-reset-on-stale-main]]"
+    },
+    {
+      "id": "vercel-verify-contract",
+      "enabled": true,
+      "matcher": "vercel\\s+(deploy\\b|--prod)",
+      "probes": [
+        "always"
+      ],
+      "decision": "warn",
+      "reason": "DEPLOY VERIFICATION (mandatory afterwards, push/deploy != live): (1) `vercel ls` — age vs commit time; (2) `vercel inspect` — alias truth (edge-cache curls lie for minutes); (3) grep a content fingerprint in the built chunk + verify the same chunk live, with a positive control; (4) on 'my SHA is missing': `git merge-base --is-ancestor` instead of panic.",
+      "lesson": "[[never-assume-deploys-verify-actively]]"
+    }
+  ]
+}
