@@ -20,6 +20,13 @@ Steps:
    `~/vault/_templates/lesson.md`. Frontmatter: derive `domain:` from context
    (coding|marketing|design|business|content|ops), `project:` = `basename "$PWD"` or `cross`,
    estimate `confidence:` honestly (happened once = medium).
+3b. If `$ARGUMENTS` contains `--guard` (or the rule is deterministically checkable and
+   keeps recurring): additionally draft a guard entry for
+   `~/.claude/personal-os/guards.json` — matcher (regex on the command), probe (an
+   existing probe from `~/.claude/hooks/guard.py`, or name a new one), decision
+   (ask|deny|warn), reason (1 line, distilled from the rule), lesson wikilink — and
+   show it for Y/N before appending. A new probe needed → mark the entry as a TODO
+   (`enabled: false`), never guess.
    **Time-sensitive?** If the lesson depends on external behaviour that can change
    (tool/API/platform behaviour, prices, UI), also set `review_by: <YYYY-MM-DD>`
    (default +6 months). `/lessons-gc` reports overdue ones for re-validation instead of

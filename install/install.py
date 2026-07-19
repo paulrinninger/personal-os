@@ -6,6 +6,8 @@ What it does (and prints the full plan BEFORE touching anything):
   2. create your vault from the empty scaffold (default ~/vault), optionally seed examples
   3. copy commands / hooks / engine / skills into ~/.claude (WITHOUT clobbering your settings)
   4. deep-merge our hooks + env + permissions into ~/.claude/settings.json (backs up first)
+  4b. materialize <state home>/guards.json from guards.example.json (author email from
+      --git-author-email / config `git_author_email`; never overwrites an existing one)
   5. append the Personal OS section to ~/.claude/CLAUDE.md between sentinels (idempotent)
   6. write ~/.config/qmd/index.yml pointing at your vault, then build the first index
   7. optionally register a nightly graph rebuild (--schedule) and/or the nightly
@@ -42,11 +44,12 @@ HOME = os.path.expanduser("~")
 # Sentinels that identify OUR hook groups, so re-runs replace rather than duplicate.
 HOOK_SENTINELS = (
     "recall-lessons.py", "risk-recall.py", "save_nudge.sh", "health-sentinel.py",
-    "vault_autopush.sh", "dream_run.sh",
+    "vault_autopush.sh", "dream_run.sh", "guard.py", "session-brief.py",
     "checkpoint session log", "graphify: knowledge graph at graphify-out",
 )
-HOOK_FILES = ("recall-lessons.py", "risk-recall.py", "health-sentinel.py")
-ENGINE_FILES = ("os_lessons.py", "os_doctor.py", "README.md")
+HOOK_FILES = ("recall-lessons.py", "risk-recall.py", "health-sentinel.py",
+              "guard.py", "session-brief.py")
+ENGINE_FILES = ("os_lessons.py", "os_doctor.py", "guards.example.json", "README.md")
 CLAUDE_MD_START = "<!-- personal-os:start -->"
 CLAUDE_MD_END = "<!-- personal-os:end -->"
 
@@ -86,6 +89,7 @@ def load_config(args):
         "dream_gen_model": "llama3.2:3b",
         "import_chats_nightly": False,
         "auto_install_deps": False,
+        "git_author_email": "",
     }
     if args.config:
         with open(expand(args.config)) as f:
@@ -103,6 +107,8 @@ def load_config(args):
         cfg["schedule_nightly_dream"] = True
     if args.autopush:
         cfg["autopush_on_stop"] = True
+    if getattr(args, "git_author_email", None) is not None:
+        cfg["git_author_email"] = args.git_author_email
 
     cfg["vault_dir"] = expand(cfg["vault_dir"])
     cfg["claude_dir"] = expand(cfg["claude_dir"])
@@ -315,6 +321,37 @@ def deep_merge_settings(cfg, dry, backup_dir):
 def _is_ours(group):
     blob = json.dumps(group)
     return any(s in blob for s in HOOK_SENTINELS)
+
+
+# ------------------------------------------------------------------- guards
+
+def materialize_guards(cfg, dry):
+    """guards.example.json -> <personal_os_home>/guards.json (once). The example ships
+    an EMPTY author_email placeholder; the materialized file gets your
+    git_author_email so the deploy-wrong-author rule can actually fire (empty keeps
+    that one rule dormant). NEVER overwrites an existing guards.json — that file is
+    user-customized (your own compiled rules live there)."""
+    dst = os.path.join(cfg["personal_os_home"], "guards.json")
+    info(f"guards → {dst}")
+    if dry:
+        return
+    if os.path.exists(dst):
+        warn("guards.json exists — left untouched (your rules; fresh defaults are in "
+             "guards.example.json next to it)")
+        return
+    with open(os.path.join(REPO, "claude", "personal-os", "guards.example.json"),
+              encoding="utf-8") as f:
+        guards = json.load(f)
+    email = (cfg.get("git_author_email") or "").strip()
+    for rule in guards.get("rules", []):
+        if "author_email" in rule:
+            rule["author_email"] = email
+    os.makedirs(cfg["personal_os_home"], exist_ok=True)
+    with open(dst, "w", encoding="utf-8") as f:
+        json.dump(guards, f, indent=2, ensure_ascii=False)
+    ok("guards.json materialized (mode: ask-only — shadow week first)"
+       + (f" · author guard: {email}" if email
+          else " · author guard dormant (no git_author_email)"))
 
 
 # ----------------------------------------------------------------- CLAUDE.md
@@ -566,6 +603,10 @@ def main():
     ap.add_argument("--autopush", action="store_true",
                     help="opt-in Stop hook: commit+push the vault at session end "
                          "(requires a vault git remote)")
+    ap.add_argument("--git-author-email", default=None,
+                    help="expected git author email for the deploy-wrong-author guard "
+                         "(written into the materialized guards.json; empty keeps "
+                         "that rule dormant)")
     ap.add_argument("--no-embed", action="store_true",
                     help="don't build the qmd index now (do it later with qmd update && qmd embed)")
     ap.add_argument("--check-drift", action="store_true",
@@ -579,6 +620,15 @@ def main():
         return check_drift(cfg)
     tools = detect_tools()
 
+    if not cfg["git_author_email"] and not args.yes:
+        try:
+            if sys.stdin.isatty():
+                cfg["git_author_email"] = input(
+                    "Git author email for the deploy-wrong-author guard "
+                    "(Enter = leave that rule dormant): ").strip()
+        except EOFError:
+            pass
+
     print(c("\nPersonal OS — install plan", "1"))
     print("  OS:        ", platform.system(), platform.release())
     print("  vault:     ", cfg["vault_dir"])
@@ -590,6 +640,8 @@ def main():
     print("  schedule:  ", ("graph " if cfg["schedule_nightly_graph"] else "")
           + ("dream" if cfg["schedule_nightly_dream"] else "") or "none")
     print("  autopush:  ", "on Stop (opt-in)" if cfg["autopush_on_stop"] else "no")
+    print("  guards:    ", "author rule armed ({})".format(cfg["git_author_email"])
+          if cfg["git_author_email"] else "ask-only, author rule dormant")
     print("  qmd:       ", c("found", "32") if tools["qmd"] else c("MISSING (core)", "31"))
     print("  graphify:  ", c("found", "32") if tools["graphify"] else c("missing (optional)", "33"))
     print("  ollama:    ", c("found", "32") if tools["ollama"] else c("missing (optional)", "33"))
@@ -610,6 +662,7 @@ def main():
     setup_claude_assets(cfg, args.link, args.dry_run, backup_dir)
     setup_scripts(cfg, args.link, args.dry_run)
     deep_merge_settings(cfg, args.dry_run, backup_dir)
+    materialize_guards(cfg, args.dry_run)
     append_claude_md(cfg, args.dry_run)
     setup_qmd(cfg, tools, args.dry_run, args.no_embed)
     setup_scheduler(cfg, tools, args.dry_run)

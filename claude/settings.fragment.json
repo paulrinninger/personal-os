@@ -25,6 +25,12 @@
             "type": "command",
             "command": "PERSONAL_OS_HOME=\"${PERSONAL_OS_HOME}\" PERSONAL_OS_SCRIPTS_DIR=\"${PERSONAL_OS_SCRIPTS_DIR}\" python3 \"${PERSONAL_OS_CLAUDE_DIR}/hooks/health-sentinel.py\" 2>/dev/null || true",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "PERSONAL_OS_VAULT=\"${PERSONAL_OS_VAULT}\" PERSONAL_OS_SCRIPTS_DIR=\"${PERSONAL_OS_SCRIPTS_DIR}\" python3 \"${PERSONAL_OS_CLAUDE_DIR}/hooks/session-brief.py\" 2>/dev/null || true",
+            "timeout": 10,
+            "statusMessage": "Loading project brief…"
           }
         ]
       }
@@ -45,6 +51,12 @@
       {
         "matcher": "Bash",
         "hooks": [
+          {
+            "type": "command",
+            "command": "PERSONAL_OS_HOME=\"${PERSONAL_OS_HOME}\" PERSONAL_OS_SCRIPTS_DIR=\"${PERSONAL_OS_SCRIPTS_DIR}\" python3 \"${PERSONAL_OS_CLAUDE_DIR}/hooks/guard.py\" 2>/dev/null || true",
+            "timeout": 10,
+            "statusMessage": "Checking guards…"
+          },
           {
             "type": "command",
             "command": "PERSONAL_OS_SCRIPTS_DIR=\"${PERSONAL_OS_SCRIPTS_DIR}\" python3 \"${PERSONAL_OS_CLAUDE_DIR}/hooks/risk-recall.py\" 2>/dev/null || true",

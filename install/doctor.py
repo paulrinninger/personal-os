@@ -139,16 +139,30 @@ def main():
 
     print("\nClaude Code integration:")
     for f in ("hooks/recall-lessons.py", "hooks/risk-recall.py", "hooks/health-sentinel.py",
-              "personal-os/os_lessons.py", "personal-os/os_doctor.py"):
+              "hooks/guard.py", "hooks/session-brief.py",
+              "personal-os/os_lessons.py", "personal-os/os_doctor.py",
+              "personal-os/guards.example.json"):
         check(f"~/.claude/{f}", os.path.isfile(os.path.join(cd, f)))
     for cmd in ("save", "lesson", "idea", "os", "resume", "mine-chats", "lessons-gc",
-                "harvest", "dream", "producer"):
+                "harvest", "dream", "producer", "undo", "ask"):
         p = os.path.join(cd, "commands", cmd + ".md")
         check(f"/{cmd}", os.path.isfile(p))
-    for f in ("qmd_search.py", "pos_utils.py", "pos_health.py", "dream.py", "dream_run.sh",
-              "vault_autopush.sh", "graph_rebuild.sh", "save_nudge.sh"):
+    for f in ("qmd_search.py", "pos_utils.py", "pos_health.py", "pos_actions.py",
+              "pos_autopilot.py", "os_dashboard.py", "preflight.sh", "dream.py",
+              "dream_run.sh", "vault_autopush.sh", "graph_rebuild.sh", "save_nudge.sh"):
         check(f"scripts/{f}", os.path.isfile(os.path.join(sd, f)),
               "run install.py — the hooks import the shared modules from the scripts dir")
+    guards = os.path.join(cd, "personal-os", "guards.json")
+    if os.path.isfile(guards):
+        try:
+            json.load(open(guards))
+            check("guards.json valid JSON", True)
+        except Exception:
+            check("guards.json valid JSON", False,
+                  "malformed — guard.py fails open (no guards fire) until it parses")
+    else:
+        check_info("guards.json", "not materialized yet (run install.py — copies "
+                                  "guards.example.json and fills git_author_email)")
 
     settings_blob = ""
     settings = os.path.join(cd, "settings.json")
@@ -157,8 +171,10 @@ def main():
             s = json.load(open(settings))
             settings_blob = json.dumps(s)
             check("settings.json: UserPromptSubmit recall hook", "recall-lessons.py" in settings_blob)
+            check("settings.json: PreToolUse guard hook", "guard.py" in settings_blob)
             check("settings.json: PreToolUse risk hook", "risk-recall.py" in settings_blob)
             check("settings.json: SessionStart health sentinel", "health-sentinel.py" in settings_blob)
+            check("settings.json: SessionStart project brief", "session-brief.py" in settings_blob)
             check("settings.json: PERSONAL_OS_VAULT env", "PERSONAL_OS_VAULT" in settings_blob)
         except Exception:
             check("settings.json valid JSON", False, "the file is malformed")

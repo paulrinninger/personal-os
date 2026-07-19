@@ -31,6 +31,14 @@ Steps:
    ```bash
    python3 ~/.claude/personal-os/os_lessons.py health 2>/dev/null
    ```
+2c. Autopilot: `python3 ~/.personal-os/scripts/pos_actions.py list --night $(date +%F)`
+   (or your scripts dir) — one line "Autopilot last night: n actions (x links, y
+   archived, z drafts) — /dream for the journal, /undo to roll back".
+2d. **Wins (7 days)** from `~/.claude/personal-os/lesson-fires.jsonl`: count type=hit
+   (recall injections), type=guard-ask/guard-deny (risk commands actively intercepted,
+   incl. the override:true share), top-3 guard rules. One section "What the OS
+   prevented/did this week" — recall hits, guard stops, autopilot actions
+   (actions.jsonl, 7d), drafts created. This is the trust evidence for acting silently.
 3. Output, scannable (do not modify files, except step 4):
    - **Projects:** hubs with status != done — name + status line.
    - **Newest lessons (5):** title as a rule sentence.
@@ -40,7 +48,8 @@ Steps:
    - **Open ideas:** count per kind + the 5 newest titles.
    - **Recently worked on:** the 5 newest logs (project + date + title).
    - **Suggestion:** 1 line — what is worth doing next (from the open items).
-4. ONLY if `$ARGUMENTS` == `update`: in `~/vault/HOME.md`, replace the block between
-   `<!-- os:auto:start -->` and `<!-- os:auto:end -->` with the numbers/lists from step 3
-   (leave the rest of the file untouched, set `updated:`).
+4. ONLY if `$ARGUMENTS` == `update`: run
+   `python3 ~/.personal-os/scripts/os_dashboard.py` (or your scripts dir) — THAT is
+   the one code path for the os:auto block in `~/vault/HOME.md` (it can also run
+   nightly; never hand-write the block, or manual and nightly numbers diverge again).
 5. No git commit.

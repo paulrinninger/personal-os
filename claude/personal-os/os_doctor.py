@@ -75,8 +75,8 @@ S = {
         "refs": "Refs queue", "refs_n": "{} cards",
         "refs_over": "{} cards — >150, review the inbox before adding more",
         "mining": "Chat mining", "mining_none": "no chat imports (optional)",
-        "mining_n": "{} chats not yet mined",
-        "mining_over": "{} chats not yet mined — run /mine-chats (batches of 10)",
+        "mining_n": "{} chats open — the autopilot drains 10/night",
+        "mining_over": "{} chats open — growing faster than the nightly drain?",
         "dreamnotes": "Dream notes", "dreamnotes_n": "{} unreviewed",
         "dreamnotes_over": "{} unreviewed — run /dream review",
         "dream": "Dreaming (nightly)", "dream_none": "not scheduled (optional)",
@@ -100,9 +100,14 @@ S = {
         "backup": "Vault backed up", "backup_none": "vault not under git (optional)",
         "backup_age": "last commit {}h ago",
         "queue": "Harvest queue", "queue_empty": "empty",
-        "queue_wait": "{} session(s) waiting → /harvest",
+        "queue_wait": "{} session(s) — the autopilot drains 5/night",
+        "queue_over": "{} sessions — growing faster than the nightly drain?",
         "inbox": "Inbox drafts", "inbox_none": "none open",
         "inbox_n": "{} draft(s) → /harvest review",
+        "auto": "Autopilot", "auto_off": "disabled via autopilot.off (intentional)",
+        "auto_none": "no actions journal yet (runs with the nightly dream job — optional)",
+        "auto_age": "last action {}h ago",
+        "auto_stale": "last action {}h ago — >30h, check the act-* steps in the dream log",
         "verdict": "{}: {} FAIL · {} WARN · {} OK",
     },
     "de": {
@@ -117,8 +122,8 @@ S = {
         "refs": "Refs-Queue", "refs_n": "{} Karten",
         "refs_over": "{} Karten — >150, erst die Inbox reviewen",
         "mining": "Chat-Mining", "mining_none": "keine Chat-Importe (optional)",
-        "mining_n": "{} Chats unvermint",
-        "mining_over": "{} Chats unvermint — /mine-chats fahren (Batches à 10)",
+        "mining_n": "{} Chats offen — der Autopilot drainiert 10/Nacht",
+        "mining_over": "{} Chats offen — wächst schneller als der nächtliche Drain?",
         "dreamnotes": "Traum-Notizen", "dreamnotes_n": "{} unreviewt",
         "dreamnotes_over": "{} unreviewt — /dream review fahren",
         "dream": "Dreaming (nightly)", "dream_none": "nicht geplant (optional)",
@@ -142,9 +147,14 @@ S = {
         "backup": "Vault gesichert", "backup_none": "Vault nicht unter git (optional)",
         "backup_age": "letzter Commit vor {}h",
         "queue": "Harvest-Queue", "queue_empty": "leer",
-        "queue_wait": "{} Session(s) warten → /harvest",
+        "queue_wait": "{} Session(s) — der Autopilot drainiert 5/Nacht",
+        "queue_over": "{} Sessions — wächst schneller als der nächtliche Drain?",
         "inbox": "Inbox-Drafts", "inbox_none": "keine offen",
         "inbox_n": "{} Draft(s) → /harvest review",
+        "auto": "Autopilot", "auto_off": "per autopilot.off deaktiviert (bewusst)",
+        "auto_none": "noch kein Actions-Journal (läuft mit dem nächtlichen Dream-Job — optional)",
+        "auto_age": "letzte Aktion vor {}h",
+        "auto_stale": "letzte Aktion vor {}h — >30h, act-*-Steps im Dream-Log prüfen",
         "verdict": "{}: {} FAIL · {} WARN · {} OK",
     },
 }
@@ -275,10 +285,13 @@ if os.path.isdir(os.path.join(VAULT, ".git")):
 else:
     add("INFO", t("backup"), t("backup_none"))
 
-# 9) harvest queue drained
+# 9) harvest queue — the autopilot drains 5/night, so a small backlog is normal;
+#    WARN only when it GROWS faster than the drain
 hq = os.path.join(PO, "harvest-queue.jsonl")
 n = sum(1 for l in open(hq, encoding="utf-8", errors="replace") if l.strip()) if os.path.exists(hq) else 0
-add("PASS" if n == 0 else "WARN", t("queue"), t("queue_empty") if n == 0 else t("queue_wait").format(n))
+add("PASS" if n <= 80 else "WARN", t("queue"),
+    t("queue_empty") if n == 0
+    else (t("queue_wait").format(n) if n <= 80 else t("queue_over").format(n)))
 
 # 10) inbox drafts reviewed (dreams/ + refs/ have their own checks below — don't nag twice)
 inbox = [p for p in glob.glob(os.path.join(VAULT, "_inbox", "**", "*.md"), recursive=True)
@@ -319,10 +332,11 @@ n_chats = len(glob.glob(os.path.join(VAULT, "chats", "*", "*.md")))
 if n_chats == 0:
     add("INFO", t("mining"), t("mining_none"))
 else:
+    # the autopilot drains 10/night — WARN only when the backlog outgrows the drain
     backlog = _mining_backlog("code", ".chat_mining_state.txt") \
         + _mining_backlog("gpt", ".chatgpt_mining_state.txt")
-    add("PASS" if backlog <= 30 else "WARN", t("mining"),
-        t("mining_n").format(backlog) if backlog <= 30 else t("mining_over").format(backlog))
+    add("PASS" if backlog <= 160 else "WARN", t("mining"),
+        t("mining_n").format(backlog) if backlog <= 160 else t("mining_over").format(backlog))
 
 # 14) dreaming ran — optional, INFO if never configured or intentionally off, never FAIL
 if os.path.exists(os.path.join(PO, "dream.off")):
@@ -351,7 +365,20 @@ if glob.glob(os.path.join(VAULT, "_inbox", "dreams", "*.md")):
         t("dreamnotes_n").format(dream_drafts) if dream_drafts <= 7
         else t("dreamnotes_over").format(dream_drafts))
 
-# 16) vault autopush (opt-in): Stop hook wired -> the vault needs a git remote
+# 16) autopilot ran? (actions.jsonl fresh, OR deliberately off via autopilot.off).
+#     INFO on a fresh install (it only runs with the nightly dream job), never FAIL.
+if os.path.exists(os.path.join(PO, "autopilot.off")):
+    add("INFO", t("auto"), t("auto_off"))
+else:
+    aj_age = age_h(os.path.join(PO, "actions.jsonl"))
+    if aj_age is None:
+        add("INFO", t("auto"), t("auto_none"))
+    else:
+        add("PASS" if aj_age < 30 else "WARN", t("auto"),
+            t("auto_age").format(int(aj_age)) if aj_age < 30
+            else t("auto_stale").format(int(aj_age)))
+
+# 17) vault autopush (opt-in): Stop hook wired -> the vault needs a git remote
 try:
     sblob = open(os.path.join(CLAUDE_DIR, "settings.json"), encoding="utf-8").read()
 except Exception:

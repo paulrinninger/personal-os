@@ -15,9 +15,12 @@
   "install_examples": true,
   "schedule_nightly_graph": false,
 
-  "_dream_note": "Nightly local-LLM consolidation ('dreaming') — a suggestions-only digest at _inbox/dreams/, reviewed via /dream review. Registered at 04:45, ~30min after the graph rebuild. Wants Ollama (without it only the LLM-free passes run). Separate opt-in from schedule_nightly_graph since it makes LLM calls (capped, but still real compute). Same as passing --schedule-dream.",
+  "_dream_note": "Nightly local-LLM consolidation ('dreaming') + silent autopilot — the passes compute, pos_autopilot.py executes the low-risk layer (journaled, /undo rolls a night back), and one night-journal note lands at _inbox/dreams/. Registered at 04:45, ~30min after the graph rebuild. Wants Ollama (without it only the LLM-free passes run). Separate opt-in from schedule_nightly_graph since it makes LLM calls (capped, but still real compute). Same as passing --schedule-dream. Autopilot-only kill switch: touch <state home>/autopilot.off.",
   "schedule_nightly_dream": false,
   "dream_gen_model": "llama3.2:3b",
+
+  "_guard_note": "Expected git author email for the deploy-wrong-author guard rule (written into the materialized <state home>/guards.json). Empty string = that one rule stays dormant; all other guard rules work regardless. Same as passing --git-author-email.",
+  "git_author_email": "",
 
   "_autopush_note": "OFF by default. If true, adds a Stop hook that commits+pushes the vault to ITS OWN git remote at session end (allowlist staging — chats/ and _inbox/ can never be staged). Requires the vault to be a git repo with a remote. Same as passing --autopush.",
   "autopush_on_stop": false,

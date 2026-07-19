@@ -21,7 +21,7 @@ import sys
 HOME = os.path.expanduser("~")
 HOOK_SENTINELS = (
     "recall-lessons.py", "risk-recall.py", "save_nudge.sh", "health-sentinel.py",
-    "vault_autopush.sh", "dream_run.sh",
+    "vault_autopush.sh", "dream_run.sh", "guard.py", "session-brief.py",
     "checkpoint session log", "graphify: knowledge graph at graphify-out",
 )
 ENV_KEYS = ("PERSONAL_OS_VAULT", "PERSONAL_OS_CLAUDE_DIR", "PERSONAL_OS_SCRIPTS_DIR",
@@ -86,8 +86,11 @@ def main():
     for f in ("commands/save.md", "commands/lesson.md", "commands/idea.md", "commands/os.md",
               "commands/resume.md", "commands/mine-chats.md", "commands/lessons-gc.md",
               "commands/harvest.md", "commands/dream.md", "commands/producer.md",
+              "commands/undo.md", "commands/ask.md",
               "hooks/recall-lessons.py", "hooks/risk-recall.py", "hooks/health-sentinel.py",
-              "personal-os/os_lessons.py", "personal-os/os_doctor.py", "personal-os/README.md"):
+              "hooks/guard.py", "hooks/session-brief.py",
+              "personal-os/os_lessons.py", "personal-os/os_doctor.py",
+              "personal-os/guards.example.json", "personal-os/README.md"):
         p = os.path.join(cd, f)
         if os.path.lexists(p):
             os.remove(p)
@@ -110,10 +113,14 @@ def main():
     # dreaming engine + install state (under the state home). Dream NOTES in
     # <vault>/_inbox/dreams/ and producer drafts in _inbox/producer-drafts/ are user
     # content and stay — as do producer-queue.jsonl / producer-templates.json (you
-    # authored those, they are lead data, not engine state).
+    # authored those, they are lead data, not engine state). guards.json stays too
+    # (user-customized rules), and so do actions.jsonl + harvest-queue-done.jsonl:
+    # they are the autopilot's undo journal — deleting them would take away your
+    # ability to roll back actions the autopilot already took in the vault.
     for f in ("dream-cursor.json", "dream-embeds.json", "dream-feedback.jsonl",
               "ventures-cursor.json", "ventures-embeds.json", "producer-feedback.jsonl",
-              "dream.off", "install-manifest.json", "health.json"):
+              "feedback-scan.json", "dream.off", "autopilot.off",
+              "install-manifest.json", "health.json"):
         p = os.path.join(state_home, f)
         if os.path.lexists(p):
             os.remove(p)
@@ -124,8 +131,9 @@ def main():
     ok("dream/health state removed")
 
     info("Left in place: your vault (incl. dream notes in _inbox/dreams/ and producer "
-         "drafts), producer queue/templates (your lead data), "
-         "qmd/graphify/ollama, lesson-fires log, qmd index.")
+         "drafts), producer queue/templates (your lead data), guards.json (your "
+         "compiled rules), actions.jsonl + harvest-queue-done.jsonl (the autopilot's "
+         "undo journal), qmd/graphify/ollama, lesson-fires log, qmd index.")
     info("Note: the qmd index config at ~/.config/qmd/index.yml was left (delete manually if unused).")
 
     if args.purge:
