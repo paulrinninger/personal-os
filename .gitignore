@@ -26,11 +26,17 @@ vault-scaffold/**
 **/.chatgpt_import_state.json
 **/.chatgpt_mining_state.txt
 **/harvest-queue.jsonl
+**/harvest-queue-done.jsonl
 **/health.json
 **/dream-cursor.json
 **/dream-embeds.json
 **/dream-feedback.jsonl
 **/install-manifest.json
+**/actions.jsonl
+**/feedback-scan.json
+# the materialized guards file carries a personal email — only the example is tracked
+**/guards.json
+!**/guards.example.json
 
 # --- Live Claude Code state (in case someone runs this inside ~/.claude) -----
 **/history.jsonl
