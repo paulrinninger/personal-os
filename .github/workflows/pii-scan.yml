@@ -19,6 +19,9 @@ jobs:
         uses: gitleaks/gitleaks-action@v2
         env:
           GITLEAKS_CONFIG: .gitleaks.toml
+          # required by gitleaks-action on pull_request events (read-only here; the
+          # job's permissions stay contents: read)
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: generic PII denylist (no individual named)
         run: |

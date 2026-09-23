@@ -235,7 +235,7 @@ def test_act_harvest_already_saved_drains_and_requeues_on_undo(autopilot_env, mo
     tp = tmp_path / "transcript.jsonl"
     vb = os.path.basename(str(autopilot_env.vault))
     tp.write_text(json.dumps({"message": {"content": "did things"}}) + "\n"
-                  + '{"toolu":"x","input":{"file_path":"/home/u/' + vb
+                  + '{"toolu":"x","input":{"file_path":"/srv/u/' + vb
                   + '/logs/2026-01-01-x.md"}}\n')
     entry = {"session_id": "s1", "transcript_path": str(tp), "cwd": "/x", "ts": "t"}
     orig_q = json.dumps(entry, ensure_ascii=False) + "\n"
