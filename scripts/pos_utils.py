@@ -66,15 +66,48 @@ def _lock_path(name: str) -> str:
     return os.path.join(LOCK_ROOT, name + ".lock.d")
 
 
+# A lock directory without a readable pid file that is older than this is orphaned:
+# the owner writes its pid microseconds after mkdir. If it dies in between (killed by a
+# hook timeout, for example), only a `pid.tmp.<n>` file may be left — and before this
+# rule such a lock had no owner that could ever be recognised as dead.
+_LOCK_WITHOUT_PID_ORPHANED_S = 60
+
+
 def _lock_is_stale(path: str, stale_hours: float) -> bool:
     try:
         pid = int(open(os.path.join(path, "pid"), encoding="ascii").read().strip())
         if not _pid_alive(pid):
             return True
     except Exception:
-        pass  # no/unreadable pid file → fall back to the age criterion only
+        # no/unreadable pid → orphaned once the owner would long have written it
+        try:
+            if (time.time() - os.path.getmtime(path)) > _LOCK_WITHOUT_PID_ORPHANED_S:
+                return True
+        except OSError:
+            return False
     try:
         return (time.time() - os.path.getmtime(path)) > stale_hours * 3600
+    except OSError:
+        return False
+
+
+def _remove_lock_dir(path: str) -> bool:
+    """Remove a lock directory completely — every entry (pid, pid.tmp.*), then rmdir.
+
+    Removing only `pid` left `rmdir` failing on a non-empty directory; the error was
+    swallowed and the caller retried at once, without sleep or deadline — a busy loop
+    at 100 % CPU until the hook timeout killed the process. Returns False when the
+    directory could not be removed, so the caller falls through to its deadline."""
+    try:
+        for entry in os.listdir(path):
+            try:
+                os.unlink(os.path.join(path, entry))
+            except OSError:
+                pass
+        os.rmdir(path)
+        return True
+    except FileNotFoundError:
+        return True
     except OSError:
         return False
 
@@ -85,35 +118,25 @@ def acquire_lock(name: str, stale_hours: float = 6.0, wait_secs: float = 0) -> b
     os.makedirs(LOCK_ROOT, exist_ok=True)
     path = _lock_path(name)
     deadline = time.time() + wait_secs
+    takeovers = 0
     while True:
         try:
             os.mkdir(path)
             write_atomic(os.path.join(path, "pid"), str(os.getpid()))
             return True
         except FileExistsError:
-            if _lock_is_stale(path, stale_hours):
-                try:
-                    pf = os.path.join(path, "pid")
-                    if os.path.exists(pf):
-                        os.unlink(pf)
-                    os.rmdir(path)
-                except OSError:
-                    pass
+            # Take over only if the cleanup really succeeded, and at most three times —
+            # otherwise fall through to the deadline check instead of spinning.
+            if takeovers < 3 and _lock_is_stale(path, stale_hours) and _remove_lock_dir(path):
+                takeovers += 1
                 continue
         if time.time() >= deadline:
             return False
-        time.sleep(2)
+        time.sleep(min(2.0, max(0.05, deadline - time.time())))
 
 
 def release_lock(name: str) -> None:
-    path = _lock_path(name)
-    try:
-        pf = os.path.join(path, "pid")
-        if os.path.exists(pf):
-            os.unlink(pf)
-        os.rmdir(path)
-    except OSError:
-        pass
+    _remove_lock_dir(_lock_path(name))
 
 
 def fire_log_append(record: dict, fire_log: str = None) -> None:

@@ -92,6 +92,26 @@ def log(msg):
         pass
 
 
+# Quoted arguments and heredoc bodies are CONTENT, not the action. Searching the raw
+# command turned a long commit message into the query, and the vector search returned
+# lessons about the message's topic instead of the risky act (git push, rm -rf, …).
+# Arguments after `sh -c` / `ssh` stay — there the quoted string IS the command.
+_HEREDOC = re.compile(r"<<-?\s*'?\"?(\w+)'?\"?.*?^\s*\1\s*$", re.S | re.M)
+_SHELL_C = re.compile(r"\b(?:ba|z|k)?sh\s+-c\s*$|\bssh\b[^|;&]*$")
+
+
+def only_commands(cmd):
+    """The command with heredoc bodies and quoted arguments blanked out."""
+    s = _HEREDOC.sub(" ", cmd)
+    out, i = [], 0
+    for m in re.finditer(r"'[^']*'|\"[^\"]*\"", s):
+        out.append(s[i:m.start()])
+        out.append(m.group(0) if _SHELL_C.search(s[:m.start()]) else " ")
+        i = m.end()
+    out.append(s[i:])
+    return " ".join("".join(out).split())
+
+
 def extract_query(data):
     """Return (query_text, label) for a risky action, else (None, None)."""
     tool = (data.get("tool_name") or "")
@@ -99,7 +119,7 @@ def extract_query(data):
     cmd = ti.get("command")
     if cmd and ("Bash" in tool or not tool):
         if RISKY_BASH.search(cmd):
-            return cmd[:300], "Bash"
+            return (only_commands(cmd) or cmd)[:300], "Bash"
         return None, None
     low = tool.lower()
     if any(k in low for k in MAIL_KEYS):

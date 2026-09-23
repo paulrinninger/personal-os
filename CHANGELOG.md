@@ -5,6 +5,26 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-09-23
+
+A patch release with two fixes found by auditing a long-running install.
+
+### Fixed
+
+- **A lock takeover could spin at 100 % CPU** (`scripts/pos_utils.py`). If a process
+  died between `mkdir` of its lock directory and writing its pid, the directory held
+  only a `pid.tmp.<n>` file. The stale takeover removed just `pid`, `rmdir` then failed
+  on the non-empty directory, the error was swallowed and the loop retried at once —
+  no sleep, no deadline. Every recall hook that needed the lock burned a CPU core until
+  its hook timeout killed it, so recall silently stopped working. Now: a lock without a
+  readable pid counts as orphaned after 60 s, the takeover removes every entry, and a
+  failed cleanup falls through to the normal deadline and sleep. Three regression tests.
+- **risk-recall searched for the argument content instead of the risky action**
+  (`claude/hooks/risk-recall.py`). The raw command was the vector query, so a long
+  commit message or heredoc body pulled in lessons about the message's topic. Quoted
+  arguments and heredoc bodies are now blanked out before searching (kept after
+  `sh -c` / `ssh`, where the quoted string is the command). Four tests.
+
 ## [0.4.0] - 2026-07-19
 
 **Why this release exists, honestly:** 0.3's dreaming engine asked for permission every

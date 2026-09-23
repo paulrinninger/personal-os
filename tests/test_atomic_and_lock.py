@@ -75,3 +75,42 @@ def test_fresh_lock_with_alive_pid_is_not_stolen(po_home):
     with open(os.path.join(d, "pid"), "w") as f:
         f.write(str(os.getpid()))
     assert pos_utils.acquire_lock("job", stale_hours=6.0, wait_secs=0) is False
+
+
+# ------------------------------------------------- orphaned lock without a pid file
+
+def _orphan(name, age_s=600):
+    """A lock whose owner died between mkdir and writing its pid: only pid.tmp.<n>."""
+    d = os.path.join(pos_utils.LOCK_ROOT, name + ".lock.d")
+    os.makedirs(d)
+    with open(os.path.join(d, "pid.tmp.47138"), "w") as f:
+        f.write("47138")
+    old = time.time() - age_s
+    os.utime(d, (old, old))
+    return d
+
+
+def test_orphaned_lock_without_pid_is_taken_over(po_home):
+    _orphan("vsearch")
+    t0 = time.time()
+    assert pos_utils.acquire_lock("vsearch", stale_hours=0.05, wait_secs=0) is True
+    assert time.time() - t0 < 1.0
+    pos_utils.release_lock("vsearch")
+    assert not os.path.exists(os.path.join(pos_utils.LOCK_ROOT, "vsearch.lock.d"))
+
+
+def test_fresh_lock_without_pid_is_respected(po_home):
+    # microseconds after mkdir the owner has not written its pid yet: don't steal
+    _orphan("fresh", age_s=1)
+    assert pos_utils.acquire_lock("fresh", stale_hours=0.05, wait_secs=0) is False
+
+
+def test_unremovable_stale_lock_does_not_spin(po_home, monkeypatch):
+    # even if the cleanup keeps failing, the deadline holds and no CPU is burned
+    _orphan("stuck")
+    monkeypatch.setattr(pos_utils, "_remove_lock_dir", lambda path: False)
+    cpu0, wall0 = time.process_time(), time.time()
+    assert pos_utils.acquire_lock("stuck", stale_hours=0.05, wait_secs=0.5) is False
+    assert time.time() - wall0 < 2.0
+    assert time.process_time() - cpu0 < 0.3
+
